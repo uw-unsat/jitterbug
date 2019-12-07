@@ -186,7 +186,6 @@
                         ; assume the endianness imm is one of 16, 32, 64
                         ; (=> (endian? code) (|| (equal? imm (bv 16 32)) (equal? imm (bv 32 32)) (equal? imm (bv 64 32))))
                         (=> (endian? code) (equal? imm (bv 16 32)))
-
         ))
 
         (let ([asserted (asserts)])
@@ -208,7 +207,7 @@
         (run-jitted-code target-cpu insns)
 
         ; Prove that the final states match
-        (check-unsat? (verify (assert (implies pre (cpu-equal? bpf-cpu target-cpu)))))
+        (check-unsat? (verify (assert (=> pre (cpu-equal? bpf-cpu target-cpu)))))
 
         ; Prove that the final program counters correspond:
         ; offsets[bpf-pc-end - bpf-pc-base - 1] == (target-pc-end - target-pc-base) / N

@@ -95,7 +95,8 @@
     [(BPF_JSGT) 'BPF_JSLE]
     [(BPF_JSLT) 'BPF_JSGE]
     [(BPF_JSGE) 'BPF_JSLT]
-    [(BPF_JSLE) 'BPF_JSGT]))
+    [(BPF_JSLE) 'BPF_JSGT]
+    [else (assert #f)]))
 
 (define (emit_bcc cond_ rd rs rvoff ctx)
   (case cond_
@@ -118,7 +119,8 @@
     [(BPF_JSGE)
       (emit (rv_bge rd rs (bvashr rvoff (bv 1 32))) ctx)]
     [(BPF_JSLE)
-      (emit (rv_bge rs rd (bvashr rvoff (bv 1 32))) ctx)]))
+      (emit (rv_bge rs rd (bvashr rvoff (bv 1 32))) ctx)]
+    [else (assert #f)]))
 
 (define (emit_branch cond_ rd rs insn rvoff ctx)
   (cond
@@ -153,7 +155,6 @@
   (define is64 (|| (equal? (BPF_CLASS code) 'BPF_ALU64)
                    (equal? (BPF_CLASS code) 'BPF_JMP)))
 
-  ; TODO: add more checks as in init_regs
   (define rd (bpf_to_rv_reg dst))
   (define rs (bpf_to_rv_reg src))
 
@@ -347,9 +348,7 @@
         [else
           (emit_branch code rd RV_REG_T1 insn rvoff ctx)])]
 
-  )
-
-  (context-insns ctx))
+  ))
 
 (define (cpu-equal? b r)
   (define bpf-regs (bpf:cpu-regs b))
@@ -372,7 +371,7 @@
   (cond
     [(term? n) #f]
     [(< n (vector-length instrs)) (vector-ref instrs n)]
-    [#t #f]))
+    [else #f]))
 
 (define (interpret-program base cpu instrs)
   ; cpu -> riscv cpu
