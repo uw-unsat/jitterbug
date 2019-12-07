@@ -1,0 +1,3 @@
+[submodule "serval"]
+	path = serval
+	url = ../../unsat/serval.git

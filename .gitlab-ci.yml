@@ -1,0 +1,12 @@
+image: unsat/serval-tools:latest
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+before_script:
+  - raco pkg remove serval
+  - raco pkg install ./serval
+
+verify-rv64-jit:
+  script:
+    - raco test --jobs 8 rv64/test/*.rkt
