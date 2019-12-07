@@ -26,6 +26,21 @@
      (emit (rv_lui rd upper) ctx)
      (emit (rv_addiw rd rd lower) ctx)]))
 
+(define (rv_offset insn off ctx)
+  (define offset (context-offset ctx))
+  (set! off (bvadd off (bv 1 32)))
+  (define from
+    (if (bvsgt insn (bv 0 32))
+        (offset (bvsub insn (bv 1 32)))
+        (bv 0 32)))
+
+  (define to
+    (if (bvsge (bvadd insn off) (bv 0 32))
+        (offset (bvsub (bvadd insn off) (bv 1 32)))
+        (bv 0 32)))
+
+  (bvshl (bvsub to from) (bv 2 32)))
+
 (define (emit_zext_32 reg ctx)
   (emit (rv_slli reg reg 32) ctx)
   (emit (rv_srli reg reg 32) ctx))
@@ -51,26 +66,6 @@
 (define (emit_sext_32_rd rd ctx)
   (emit (rv_addiw RV_REG_T2 rd 0) ctx)
   (values RV_REG_T2))
-
-(define (rv_offset insn off ctx)
-  (define offset (context-offset ctx))
-  (set! off (bvadd off (bv 1 32)))
-  (define from
-    (if (bvsgt insn (bv 0 32))
-        (offset (bvsub insn (bv 1 32)))
-        (bv 0 32)))
-
-  (define to
-    (if (bvsge (bvadd insn off) (bv 0 32))
-        (offset (bvsub (bvadd insn off) (bv 1 32)))
-        (bv 0 32)))
-
-  (bvshl (bvsub to from) (bv 2 32)))
-
-(define (is_signed_bpf_cond cond_)
-  (case cond_
-    [(BPF_JSGT BPF_JSLT BPF_JSGE BPF_JSLE) #t]
-    [else #f]))
 
 (define (emit_jump_and_link rd rvoff force_jalr ctx)
   (cond
@@ -149,8 +144,12 @@
           (emit (rv_auipc RV_REG_T1 upper) ctx)
           (emit (rv_jalr RV_REG_ZERO RV_REG_T1 lower) ctx)])]))
 
+(define (is_signed_bpf_cond cond_)
+  (case cond_
+    [(BPF_JSGT BPF_JSLT BPF_JSGE BPF_JSLE) #t]
+    [else #f]))
 
-(define (run-jit insn code dst src off imm ctx)
+(define (emit_insn i code dst src off imm ctx)
 
   (define is64 (|| (equal? (BPF_CLASS code) 'BPF_ALU64)
                    (equal? (BPF_CLASS code) 'BPF_JMP)))
@@ -298,13 +297,13 @@
 
     [(list 'BPF_JMP 'BPF_JA 'BPF_K)
       (define off32 (sign-extend off (bitvector 32)))
-      (define rvoff (sign-extend (rv_offset insn off32 ctx) (bitvector 64)))
+      (define rvoff (sign-extend (rv_offset i off32 ctx) (bitvector 64)))
       (emit_jump_and_link RV_REG_ZERO rvoff #f ctx)]
 
     [(list (or 'BPF_JMP 'BPF_JMP32) code 'BPF_X)
 
       (define off32 (sign-extend off (bitvector 32)))
-      (define rvoff (rv_offset insn off32 ctx))
+      (define rvoff (rv_offset i off32 ctx))
 
       (when (! is64)
         (define s (context-ninsns ctx))
@@ -320,14 +319,14 @@
         [(equal? code 'BPF_JSET)
           (set! rvoff (bvsub rvoff (bv 4 32)))
           (emit (rv_and RV_REG_T1 rd rs) ctx)
-          (emit_branch 'BPF_JNE RV_REG_T1 RV_REG_ZERO insn rvoff ctx)]
+          (emit_branch 'BPF_JNE RV_REG_T1 RV_REG_ZERO i rvoff ctx)]
         [else
-          (emit_branch code rd rs insn rvoff ctx)])]
+          (emit_branch code rd rs i rvoff ctx)])]
 
     [(list (or 'BPF_JMP 'BPF_JMP32) code 'BPF_K)
 
       (define off32 (sign-extend off (bitvector 32)))
-      (define rvoff (rv_offset insn off32 ctx))
+      (define rvoff (rv_offset i off32 ctx))
 
       (define s (context-ninsns ctx))
       (emit_imm RV_REG_T1 imm ctx)
@@ -344,9 +343,9 @@
         [(equal? code 'BPF_JSET)
           (set! rvoff (bvsub rvoff (bv 4 32)))
           (emit (rv_and RV_REG_T1 rd RV_REG_T1) ctx)
-          (emit_branch 'BPF_JNE RV_REG_T1 RV_REG_ZERO insn rvoff ctx)]
+          (emit_branch 'BPF_JNE RV_REG_T1 RV_REG_ZERO i rvoff ctx)]
         [else
-          (emit_branch code rd RV_REG_T1 insn rvoff ctx)])]
+          (emit_branch code rd RV_REG_T1 i rvoff ctx)])]
 
   ))
 
@@ -400,7 +399,7 @@
     #:init-cpu init-rv64-cpu
     #:equiv cpu-equal?
     #:run-code run-jitted-code
-    #:run-jit run-jit
+    #:run-jit emit_insn
     #:max-insn (bv #x100000 32)
     #:max-target-size (bv #x800000 32)))
 
