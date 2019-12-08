@@ -448,5 +448,10 @@
     #:max-insn (bv #x100000 32)
     #:max-target-size (bv #x800000 32)))
 
+(define-syntax-rule (jit-verify-case code)
+  (test-case+ (format "VERIFY ~s" code) (check-jit code)))
+
 (define-syntax-rule (jit-test-case code)
-  (test-case+ (format "~s" code) (check-jit code)))
+  (test-case+ (format "TEST ~s" code)
+    (parameterize [(verify? #f)]
+      (quickcheck (check-jit code)))))

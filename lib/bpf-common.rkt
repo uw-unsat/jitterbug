@@ -60,6 +60,8 @@
 (define (src-k? code)
   (equal? (BPF_SRC code) 'BPF_K))
 
+(define verify? (make-parameter #t))
+
 ; Top-level definition for BPF Jit correctness.
 (define
   (verify-jit-refinement
@@ -72,8 +74,7 @@
     #:init-cpu init-cpu ; Constructor for target cpu, (target_pc, bpf_cpu) -> target_cpu
     #:target-cpu-pc target-cpu-pc ; Accessor for target pc, (target_cpu) -> (bitvector target-bitwidth)
     #:max-target-size [max-target-size (bv 8192 32)]
-    #:max-insn [max-insn (bv 2048 32)]
-    #:verify? [verify? #t])
+    #:max-insn [max-insn (bv 2048 32)])
 
     ; (define dst (apply choose* (range 5)))
     ; (define src (apply choose* (range 5)))
@@ -96,7 +97,7 @@
         (define bpf-cpu (bpf:init-cpu))
         (bpf:set-cpu-pc! bpf-cpu (zero-extend insn (bitvector 64)))
         (bpf:set-cpu-regs! bpf-cpu
-          (if verify? (vector-copy bpf-regs) (arbitrary bpf-regs)))
+          (if (verify?) (vector-copy bpf-regs) (arbitrary bpf-regs)))
 
         ; Offset table mapping each bpf instruction index to the
         ; index of the target instruction after the corresponding target instructions
@@ -126,6 +127,8 @@
         ; Symbolic offset and immediate for BPF instruction
         (define-symbolic* off (bitvector 16))
         (define-symbolic* imm (bitvector 32))
+        (when (! (verify?))
+          (set! imm (arbitrary imm)))
 
         ; Operands for expressing precondition on BPF instruction
         (define dst-op (vector-ref bpf-regs dst))
