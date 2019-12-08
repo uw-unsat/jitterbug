@@ -175,9 +175,13 @@
   (match code
     ; dst = src
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_MOV 'BPF_X)
-     (emit (if is64 (rv_addi rd rs 0) (rv_addiw rd rs 0)) ctx)
-     (when (! is64)
-       (emit_zext_32 rd ctx))]
+     (if (equal? imm (bv 1 32))
+         ; mov32 for zext
+         (emit_zext_32 rd ctx)
+         (begin
+           (emit (if is64 (rv_addi rd rs 0) (rv_addiw rd rs 0)) ctx)
+           (when (! is64)
+             (emit_zext_32 rd ctx))))]
 
     ; dst = dst OP src
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ADD 'BPF_X)

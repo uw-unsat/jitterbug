@@ -182,14 +182,18 @@
                         (=> (&& (alu64? code) (div? code) (src-x? code)) (! (bveq src-op (bv 0 64))))
                         (=> (&& (alu32? code) (div? code) (src-k? code)) (! (bveq imm (bv 0 32))))
                         (=> (&& (alu64? code) (div? code) (src-k? code)) (! (bveq imm (bv 0 32))))
-                        ; assume the shifting amount is in-bounds
+                        ; Assume the shifting amount is in-bounds
                         (=> (&& (alu32? code) (shift? code) (src-x? code)) (bvult src-op (bv 32 64)))
                         (=> (&& (alu64? code) (shift? code) (src-x? code)) (bvult src-op (bv 64 64)))
                         (=> (&& (alu32? code) (shift? code) (src-k? code)) (bvult imm (bv 32 32)))
                         (=> (&& (alu64? code) (shift? code) (src-k? code)) (bvult imm (bv 64 32)))
-                        ; assume the endianness imm is one of 16, 32, 64
+                        ; Assume the endianness imm is one of 16, 32, 64
                         ; (=> (endian? code) (|| (equal? imm (bv 16 32)) (equal? imm (bv 32 32)) (equal? imm (bv 64 32))))
                         (=> (endian? code) (equal? imm (bv 16 32)))
+                        ; Assume the mov32 variant imm 1 implies src == dst
+                        ; For debugging, make sure that src and dst are the same value
+                        (=> (&& (equal? (BPF_OP code) 'BPF_MOV) (src-x? code) (bveq imm (bv 1 32)))
+                            (&& (equal? dst src) (alu32? code)))
         ))
 
         (let ([asserted (asserts)])
