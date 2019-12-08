@@ -274,22 +274,74 @@
 
     ; dst = dst OP imm
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ADD 'BPF_K)
-     (cond
-       [(is_12b_int imm)
+      (cond
+        [(is_12b_int imm)
         (emit (if is64 (rv_addi rd rd imm) (rv_addiw rd rd imm)) ctx)]
-       [else
+        [else
         (emit_imm RV_REG_T1 imm ctx)
         (emit (if is64 (rv_add rd rd RV_REG_T1) (rv_addw rd rd RV_REG_T1)) ctx)])
-     (when (! is64)
-         (emit_zext_32 rd ctx))]
+      (when (! is64)
+          (emit_zext_32 rd ctx))]
+
+    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_SUB 'BPF_K)
+      (cond
+        [(is_12b_int (bvneg imm))
+          (emit (if is64 (rv_addi rd rd (bvneg imm))
+                         (rv_addiw rd rd (bvneg imm))) ctx)]
+        [else
+          (emit_imm RV_REG_T1 imm ctx)
+          (emit (if is64 (rv_sub rd rd RV_REG_T1)
+                         (rv_subw rd rd RV_REG_T1)) ctx)])
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
+    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_AND 'BPF_K)
+      (cond
+        [(is_12b_int imm)
+          (emit (rv_andi rd rd imm) ctx)]
+        [else
+          (emit_imm RV_REG_T1 imm ctx)
+          (emit (rv_and rd rd RV_REG_T1) ctx)])
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
+    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_OR 'BPF_K)
+      (cond
+        [(is_12b_int imm)
+          (emit (rv_ori rd rd imm) ctx)]
+        [else
+          (emit_imm RV_REG_T1 imm ctx)
+          (emit (rv_or rd rd RV_REG_T1) ctx)])
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
+    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_XOR 'BPF_K)
+      (cond
+        [(is_12b_int imm)
+          (emit (rv_xori rd rd imm) ctx)]
+        [else
+          (emit_imm RV_REG_T1 imm ctx)
+          (emit (rv_xor rd rd RV_REG_T1) ctx)])
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
+    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_MUL 'BPF_K)
+      (emit_imm RV_REG_T1 imm ctx)
+      (emit (if is64 (rv_mul rd rd RV_REG_T1)
+                     (rv_mulw rd rd RV_REG_T1)) ctx)
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_LSH 'BPF_K)
-     (emit (if is64 (rv_slli rd rd imm) (rv_slliw rd rd imm)) ctx)
-     (when (! is64)
-       (emit_zext_32 rd ctx))]
+      (emit (if is64 (rv_slli rd rd imm) (rv_slliw rd rd imm)) ctx)
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_RSH 'BPF_K)
-     (emit (if is64 (rv_srli rd rd imm) (rv_srliw rd rd imm)) ctx)
-     (when (! is64)
-       (emit_zext_32 rd ctx))]
+      (emit (if is64 (rv_srli rd rd imm) (rv_srliw rd rd imm)) ctx)
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ARSH 'BPF_K)
      (emit (if is64 (rv_srai rd rd imm) (rv_sraiw rd rd imm)) ctx)
      (when (! is64)
@@ -301,10 +353,8 @@
       (emit_jump_and_link RV_REG_ZERO rvoff #f ctx)]
 
     [(list (or 'BPF_JMP 'BPF_JMP32) code 'BPF_X)
-
       (define off32 (sign-extend off (bitvector 32)))
       (define rvoff (rv_offset i off32 ctx))
-
       (when (! is64)
         (define s (context-ninsns ctx))
         (cond
@@ -314,7 +364,6 @@
             (set!-values (rd rs) (emit_zext_32_rd_rs rd rs ctx))])
         (define e (context-ninsns ctx))
         (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32)))))
-
       (cond
         [(equal? code 'BPF_JSET)
           (set! rvoff (bvsub rvoff (bv 4 32)))
@@ -324,10 +373,8 @@
           (emit_branch code rd rs i rvoff ctx)])]
 
     [(list (or 'BPF_JMP 'BPF_JMP32) code 'BPF_K)
-
       (define off32 (sign-extend off (bitvector 32)))
       (define rvoff (rv_offset i off32 ctx))
-
       (define s (context-ninsns ctx))
       (emit_imm RV_REG_T1 imm ctx)
       (when (! is64)
@@ -338,7 +385,6 @@
             (set! rd (emit_zext_32_rd_t1 rd ctx))]))
       (define e (context-ninsns ctx))
       (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
-
       (cond
         [(equal? code 'BPF_JSET)
           (set! rvoff (bvsub rvoff (bv 4 32)))
@@ -346,7 +392,6 @@
           (emit_branch 'BPF_JNE RV_REG_T1 RV_REG_ZERO i rvoff ctx)]
         [else
           (emit_branch code rd RV_REG_T1 i rvoff ctx)])]
-
   ))
 
 (define (cpu-equal? b r)
