@@ -332,6 +332,20 @@
       (when (! is64)
         (emit_zext_32 rd ctx))]
 
+    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_DIV 'BPF_K)
+      (emit_imm RV_REG_T1 imm ctx)
+      (emit (if is64 (rv_divu rd rd RV_REG_T1)
+                     (rv_divuw rd rd RV_REG_T1)) ctx)
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
+    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_MOD 'BPF_K)
+      (emit_imm RV_REG_T1 imm ctx)
+      (emit (if is64 (rv_remu rd rd RV_REG_T1)
+                     (rv_remuw rd rd RV_REG_T1)) ctx)
+      (when (! is64)
+        (emit_zext_32 rd ctx))]
+
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_LSH 'BPF_K)
       (emit (if is64 (rv_slli rd rd imm) (rv_slliw rd rd imm)) ctx)
       (when (! is64)

@@ -17,6 +17,8 @@
     ; Instead, perform testing for these operations using random
     ; initial register and immediate values.
     (jit-test-case '(BPF_ALU BPF_MUL BPF_K))
+    (jit-test-case '(BPF_ALU BPF_DIV BPF_K))
+    (jit-test-case '(BPF_ALU BPF_MOD BPF_K))
 
     (jit-verify-case '(BPF_ALU BPF_LSH BPF_K))
     (jit-verify-case '(BPF_ALU BPF_RSH BPF_K))
