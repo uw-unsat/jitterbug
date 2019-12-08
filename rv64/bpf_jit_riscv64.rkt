@@ -13,8 +13,23 @@
 
 (define regmap #(a5 a0 a1 a2 a3 a4 s1 s2 s3 s4 s5))
 
-(define (bpf_to_rv_reg r)
-  (vector-ref regmap r))
+(define (bpf_to_rv_reg bpf_reg ctx)
+  (define reg (vector-ref regmap bpf_reg))
+  (when (member reg
+    (list RV_CTX_F_SEEN_S1 RV_CTX_F_SEEN_S2
+          RV_CTX_F_SEEN_S3 RV_CTX_F_SEEN_S4
+          RV_CTX_F_SEEN_S5 RV_CTX_F_SEEN_S6))
+    (vector-set! (context-flags ctx) (riscv:gpr->idx reg) #t))
+  reg)
+
+(define (seen_reg reg ctx)
+  (if (member reg
+    (list RV_CTX_F_SEEN_CALL
+          RV_CTX_F_SEEN_S1 RV_CTX_F_SEEN_S2
+          RV_CTX_F_SEEN_S3 RV_CTX_F_SEEN_S4
+          RV_CTX_F_SEEN_S5 RV_CTX_F_SEEN_S6))
+    (vector-ref (context-flags ctx) (riscv:gpr->idx reg))
+    #f))
 
 (define (emit_imm rd val ctx)
   (define upper (bvashr (bvadd val (bvshl (bv 1 32) (bv 11 32))) (bv 12 32)))
@@ -154,8 +169,8 @@
   (define is64 (|| (equal? (BPF_CLASS code) 'BPF_ALU64)
                    (equal? (BPF_CLASS code) 'BPF_JMP)))
 
-  (define rd (bpf_to_rv_reg dst))
-  (define rs (bpf_to_rv_reg src))
+  (define rd (bpf_to_rv_reg dst ctx))
+  (define rs (bpf_to_rv_reg src ctx))
 
   (match code
     ; dst = src

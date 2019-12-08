@@ -26,7 +26,7 @@
 (define TMP_REG_1 11)
 (define TMP_REG_2 12)
 
-(struct context (insns ninsns offset) #:mutable #:transparent)
+(struct context (insns ninsns offset flags) #:mutable #:transparent)
 
 (define (emit insn ctx)
   (set-context-insns! ctx (vector-append (context-insns ctx) (vector insn)))
@@ -79,8 +79,8 @@
     ; (define dst (apply choose* (range 5)))
     ; (define src (apply choose* (range 5)))
     ; Assume dst == 0 and src == 1 for debugging right now.
-    (define dst 0)
-    (define src 1)
+    (define dst 6)
+    (define src 7)
 
     ; (for/all ([dst dst #:exhaustive])
     ;   (for/all ([src src #:exhaustive])
@@ -135,7 +135,8 @@
         (define src-op (vector-ref bpf-regs src))
 
         ; Run the jit to produce vector of target instructions
-        (define ctx (context (vector) (bv 0 32) offsets))
+        (define-symbolic* seen boolean? [32])
+        (define ctx (context (vector) (bv 0 32) offsets (list->vector seen)))
         (run-jit insn code dst src off imm ctx)
         (define insns (context-insns ctx))
         (define ninsns (context-ninsns ctx))
