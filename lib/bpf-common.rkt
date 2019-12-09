@@ -41,6 +41,9 @@
 (define (jump? code)
   (equal? (BPF_CLASS code) 'BPF_JMP))
 
+(define (mov? code)
+  (equal? (BPF_OP code) 'BPF_MOV))
+
 (define (shift? code)
   (case (BPF_OP code)
     [(BPF_LSH BPF_RSH BPF_ARSH) #t]
@@ -190,10 +193,13 @@
                         ; Assume the endianness imm is one of 16, 32, 64
                         ; (=> (endian? code) (|| (equal? imm (bv 16 32)) (equal? imm (bv 32 32)) (equal? imm (bv 64 32))))
                         (=> (endian? code) (equal? imm (bv 16 32)))
-                        ; Assume the mov32 variant imm 1 implies src == dst
-                        ; For debugging, make sure that src and dst are the same value
-                        (=> (&& (equal? (BPF_OP code) 'BPF_MOV) (src-x? code) (bveq imm (bv 1 32)))
-                            (&& (equal? dst src) (alu32? code)))
+                        ; Assume imm in mov64 is 0
+                        (=> (&& (alu64? code) (mov? code) (src-x? code))
+                            (bveq imm (bv 0 32)))
+                        ; Assume imm in mov32 is either 0 or 1; the latter indicates the special variant with src == dst
+                        (=> (&& (alu32? code) (mov? code) (src-x? code))
+                            (|| (bveq imm (bv 0 32))
+                                (&& (bveq imm (bv 1 32)) (equal? dst src))))
         ))
 
         (let ([asserted (asserts)])
