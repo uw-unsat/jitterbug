@@ -233,4 +233,4 @@
     (define asserted (asserts))
     (clear-asserts!)
     (for ([e asserted])
-      (check-unsat? (verify (assert (=> pre e)))))))
+      (check-unsat? (verify (assert (=> pre e))))))
