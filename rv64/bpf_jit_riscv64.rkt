@@ -184,11 +184,10 @@
              (emit_zext_32 rd ctx))))]
 
     ; dst = dst OP src
-
-[(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ADD 'BPF_X)
-     (emit (if is64 (rv_add rd rd rs) (rv_addw rd rd rs)) ctx)]
-
-
+    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ADD 'BPF_X)
+     (emit (if is64 (rv_add rd rd rs) (rv_addw rd rd rs)) ctx)
+     (when (! is64)
+       (emit_zext_32 rd ctx))]
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_SUB 'BPF_X)
      (emit (if is64 (rv_sub rd rd rs) (rv_subw rd rd rs)) ctx)
      (when (! is64)
