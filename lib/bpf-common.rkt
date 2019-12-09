@@ -82,8 +82,8 @@
     ; (define dst (apply choose* (range 5)))
     ; (define src (apply choose* (range 5)))
     ; Assume dst == 0 and src == 1 for debugging right now.
-    (define dst 6)
-    (define src 7)
+    (define dst 0)
+    (define src 1)
 
     ; (for/all ([dst dst #:exhaustive])
     ;   (for/all ([src src #:exhaustive])
