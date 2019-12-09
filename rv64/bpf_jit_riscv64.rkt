@@ -478,8 +478,8 @@
     #:equiv cpu-equal?
     #:run-code run-jitted-code
     #:run-jit emit_insn
-    #:max-insn (bv #x100000 32)
-    #:max-target-size (bv #x800000 32)))
+    #:max-insn (bv #x1000000 32)
+    #:max-target-size (bv #x8000000 32)))
 
 (define-syntax-rule (jit-verify-case code)
   (test-case+ (format "VERIFY ~s" code) (check-jit code)))
