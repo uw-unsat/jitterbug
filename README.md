@@ -141,8 +141,8 @@ are currently not specified or verified:
   divide-by-zero or out-of-range shifts.
 - Verification makes assumptions on the total size of the
   compiled BPF program for jumps: it assumes that the number of BPF
-  instructions is less than 1,048,576; and that the total number
-  of generated RISC-V instructions is less than 8,388,608.
+  instructions is less than 16,777,216; and that the total number
+  of generated RISC-V instructions is less than 134,217,728.
 
 [Racket]: https://racket-lang.org
 [Serval]: https://github.com/uw-unsat/serval.git
