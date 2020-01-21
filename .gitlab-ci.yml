@@ -10,3 +10,7 @@ before_script:
 verify-rv64-jit:
   script:
     - raco test --jobs 8 rv64/test/*.rkt
+
+verify-rv32-jit:
+  script:
+    - raco test --jobs 8 rv32/test/*.rkt
