@@ -4,9 +4,25 @@
   (prefix-in bpf: serval/bpf)
   rosette/solver/smt/boolector
   rosette/lib/angelic
+  rosette/solver/smt/boolector
+  rosette/solver/smt/z3
+  serval/lib/debug
   serval/lib/unittest)
 
 (provide (all-defined-out))
+
+(let ([boolector-env (getenv "BOOLECTOR")]
+      [z3-env (getenv "Z3")])
+  (cond
+    [boolector-env
+     (define boolector-path (find-executable-path boolector-env))
+     (eprintf "Use Boolector: ~a\n" boolector-path)
+     (current-solver (boolector #:path (find-executable-path boolector-path)))]
+    [z3-env
+     (define z3-path (find-executable-path z3-env))
+     (eprintf "Use Z3: ~a\n" z3-path)
+     (current-solver (z3 #:path (find-executable-path z3-path)
+                         #:options (hash ':auto-config 'false ':smt.relevancy 0)))]))
 
 (define BPF_CLASS first)
 (define BPF_OP second)
@@ -27,6 +43,10 @@
 (define TMP_REG_2 12)
 
 (struct context (insns ninsns offset flags) #:mutable #:transparent)
+
+(define (get-offset ctx idx)
+  (bug-assert (bvsge idx (bv 0 32)) #:msg "offset arg must be in bounds")
+  ((context-offset ctx) idx))
 
 (define (emit insn ctx)
   (set-context-insns! ctx (vector-append (context-insns ctx) (vector insn)))
@@ -65,7 +85,6 @@
 
 (define verify? (make-parameter #t))
 
-; Top-level definition for BPF Jit correctness.
 (define
   (verify-jit-refinement
     code
@@ -77,11 +96,51 @@
     #:init-cpu init-cpu ; Constructor for target cpu, (target_pc, bpf_cpu) -> target_cpu
     #:target-cpu-pc target-cpu-pc ; Accessor for target pc, (target_cpu) -> (bitvector target-bitwidth)
     #:max-target-size [max-target-size (bv 8192 32)]
-    #:max-insn [max-insn (bv 2048 32)])
+    #:max-insn [max-insn (bv 2048 32)]
+    #:assumptions [assumptions (thunk null)])
 
-    ; Assume dst == 0 and src == either 0 or 1 for right now.
-    (define dst 0)
-    (define src (choose* 0 1))
+  (define asserted (with-asserts-only
+    (assert-jit-correct
+      code
+      #:target-bitwidth target-bitwidth
+      #:target-insn-size target-insn-size
+      #:equiv cpu-equal?
+      #:run-jit run-jit
+      #:run-code run-jitted-code
+      #:init-cpu init-cpu
+      #:target-cpu-pc target-cpu-pc
+      #:max-target-size max-target-size
+      #:max-insn max-insn
+      #:assumptions assumptions)))
+  (check-equal? (asserts) null)
+  (for ([e asserted])
+    (let ([model (verify (assert e))])
+      (when (sat? model)
+        (define bugs (bug-ref e))
+        (when (null? bugs)
+          (printf "Unknown assert\n"))
+        (for ([bug bugs])
+          (displayln (bug-format bug model))))
+      (check-unsat? model))))
+
+; Top-level definition for BPF Jit correctness.
+(define
+  (assert-jit-correct
+    code
+    #:target-bitwidth target-bitwidth ; The target bitwidth, as an integer
+    #:target-insn-size target-insn-size ; The target instruction size, as (bitvector target-bitwidth)
+    #:equiv cpu-equal? ; A function (bpf_cpu, target_cpu) -> bool relating bpf and target state
+    #:run-jit run-jit ; Function to run jit, (insn, offsets, code, dst, src, off, imm) -> vector of insns
+    #:run-code run-jitted-code ; Function to run jitted code (target_cpu, vector of insns) -> void
+    #:init-cpu init-cpu ; Constructor for target cpu, (target_pc, bpf_cpu) -> target_cpu
+    #:target-cpu-pc target-cpu-pc ; Accessor for target pc, (target_cpu) -> (bitvector target-bitwidth)
+    #:max-target-size [max-target-size (bv 8192 32)]
+    #:max-insn [max-insn (bv 2048 32)]
+    #:assumptions [assumptions (thunk null)])
+
+    ; Assume dst and src each are either 0 or 6
+    (define dst (choose* 0 6))
+    (define src (choose* 0 6))
 
     ; Create a symbolic register content for each BPF register
     (define-symbolic* r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 (bitvector 64))
@@ -101,6 +160,9 @@
     ; This is how we relate BPF program counter to target program counter
     (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
 
+    (define (prev-offset insn)
+      (if (bveq insn (bv 0 32)) (bv 0 32) (offsets (bvsub insn (bv 1 32)))))
+
     ; Base of the generated target program
     (define-symbolic* target-pc-base (bitvector target-bitwidth))
 
@@ -108,7 +170,7 @@
     (define (make-target-pc insn)
       (bvadd
         target-pc-base
-        (bvmul (zero-extend (offsets (bvsub insn (bv 1 32))) (bitvector target-bitwidth))
+        (bvmul (zero-extend (prev-offset insn) (bitvector target-bitwidth))
                 target-insn-size)))
 
     ; The initial target pc is offsets[insn-1] / N
@@ -119,7 +181,7 @@
     (define target-cpu (init-cpu target-pc-start bpf-cpu))
 
     ; Verify initial states match. This should be guaranteed by init-target-cpu
-    (check-unsat? (verify (assert (cpu-equal? bpf-cpu target-cpu))))
+    (assert (cpu-equal? bpf-cpu target-cpu))
 
     ; Symbolic offset and immediate for BPF instruction
     (define-symbolic* off (bitvector 16))
@@ -133,13 +195,8 @@
 
     ; Run the jit to produce vector of target instructions
     (define-symbolic* seen boolean? [32])
-    (define ctx (context (vector) (bv 0 32) offsets (list->vector seen)))
-    (run-jit insn code dst src off imm ctx)
-    (define insns (context-insns ctx))
-    (define ninsns (context-ninsns ctx))
-
-    ; Names for quantified variables in precondition
-    (define-symbolic X Y (bitvector 32))
+    (define-symbolic* ninsns (bitvector 32))
+    (define ctx (context (vector) ninsns offsets (list->vector seen)))
 
     ; Programs accepted by checker should satisfy these preconditions
     (define pre (&&
@@ -150,24 +207,15 @@
                     ; No more than 2048 instructions
                     (bvult insn max-insn)
 
+                    (bvult ninsns max-target-size)
+
                     ; Jump target in-bounds
                     (bvult (bvadd insn (sign-extend off (bitvector 32))) max-insn)
 
-                    ; The first instruction starts at 0
-                    ; This is needed because unlike uninterpreted functions,
-                    ; the C code has to avoid evaluating ctx->offset[-1]
-                    ; and instead use 0 directly.
-                    (bveq (offsets (bv -1 32)) (bv 0 32))
+                    (bveq ninsns (prev-offset insn))
 
-                    ; Offset[i] inbounds for all i inbounds
-                    (forall (list X)
-                      (=> (bvult X max-insn)
-                          (bvult (offsets X) max-target-size)))
-
-                    ; The next instruction is in the right place
-                    (for/all ([i (vector-length insns) #:exhaustive])
-                      (bveq (offsets insn)
-                            (bvadd (offsets (bvsub insn (bv 1 32))) (integer->bitvector i (bitvector 32)))))
+                    (bvult (offsets (bvadd insn (sign-extend off (bitvector 32)))) max-target-size)
+                    (bvult (offsets insn) max-target-size)
 
                     ; Target PC initially is aligned
                     (bveq
@@ -185,8 +233,7 @@
                     (=> (&& (alu32? code) (shift? code) (src-k? code)) (bvult imm (bv 32 32)))
                     (=> (&& (alu64? code) (shift? code) (src-k? code)) (bvult imm (bv 64 32)))
                     ; Assume the endianness imm is one of 16, 32, 64
-                    ; (=> (endian? code) (|| (equal? imm (bv 16 32)) (equal? imm (bv 32 32)) (equal? imm (bv 64 32))))
-                    (=> (endian? code) (equal? imm (bv 16 32)))
+                    (=> (endian? code) (|| (equal? imm (bv 16 32)) (equal? imm (bv 32 32)) (equal? imm (bv 64 32))))
                     ; Assume imm in mov64 is 0
                     (=> (&& (alu64? code) (mov? code) (src-x? code))
                         (bveq imm (bv 0 32)))
@@ -196,41 +243,45 @@
                             (&& (bveq imm (bv 1 32)) (equal? dst src))))
     ))
 
-    (let ([asserted (asserts)])
-      (clear-asserts!)
-      (for ([e asserted])
-        (let ([model (verify (assert (=> pre e)))])
-          (when (sat? model)
-            (printf "Could not prove assert: ~a\n" e))
-          (check-unsat? model))))
-
     ; Check that the preconditions are satisfiable.
     ; Technically not needed but rules out stupid verification bugs.
     (check-sat? (solve (assert pre)))
 
-    ; Run the BPF interpreter on the symbolic BPF instruction
-    (bpf:interpret-instr bpf-cpu code dst src off imm)
+    ; FIXME: really want "(assume pre)" here to kill the asserts
+    ; triggered by division by zero for example. For now it should suffice to guard with "when"
+    (when pre
 
-    ; Run the target interpreter on the JITed instructions
-    (run-jitted-code target-cpu insns)
+      (run-jit insn code dst src off imm ctx)
+      (define insns (context-insns ctx))
 
-    ; Prove that the final states match
-    (check-unsat? (verify (assert (=> pre (cpu-equal? bpf-cpu target-cpu)))))
+      ; The next instruction is in the right place
+      (define pre2
+        (for/all ([i (vector-length insns) #:exhaustive])
+          (bveq (offsets insn)
+                (bvadd (prev-offset insn) (integer->bitvector i (bitvector 32))))))
+      (when pre2
 
-    ; Prove that the final program counters correspond:
-    ; offsets[bpf-pc-end - bpf-pc-base - 1] == (target-pc-end - target-pc-base) / N
-    ; where N is the target instruction size.
-    (let ([model (verify (assert
-      (=> pre
-        (bveq (make-target-pc (extract 31 0 (bpf:cpu-pc bpf-cpu)))
-              (target-cpu-pc target-cpu)))))])
-      (when (sat? model)
-        (displayln `(insns . ,(evaluate insns model))))
-      (check-unsat? model))
+        ; Run the BPF interpreter on the symbolic BPF instruction
+        (bpf:interpret-instr bpf-cpu code dst src off imm)
 
-    ; Prove no undefined behavior, i.e., all assertions are unsatisfiable
-    ; given the preconditions.
-    (define asserted (asserts))
-    (clear-asserts!)
-    (for ([e asserted])
-      (check-unsat? (verify (assert (=> pre e))))))
+        (for/all ([insns insns #:exhaustive])
+
+          (bug-assert (bveq (bv (vector-length insns) 32) (bvsub (context-ninsns ctx) ninsns))
+            #:msg "ninsns must match")
+
+          ; Run the target interpreter on the JITed instructions
+          (run-jitted-code target-cpu insns)
+
+          ; Add external assumptions (must come after run-jitted-code)
+          (when (apply && (assumptions))
+            ; The final states match
+            (bug-assert (cpu-equal? bpf-cpu target-cpu)
+              #:msg "final states must match")
+
+            ; Prove that the final program counters correspond:
+            ; offsets[bpf-pc-end - bpf-pc-base - 1] == (target-pc-end - target-pc-base) / N
+            ; where N is the target instruction size.
+            (bug-assert
+              (bveq (make-target-pc (extract 31 0 (bpf:cpu-pc bpf-cpu)))
+                    (target-cpu-pc target-cpu))
+              #:msg "final PCs must match"))))))
