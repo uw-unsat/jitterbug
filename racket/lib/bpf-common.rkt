@@ -140,8 +140,8 @@
     #:assumptions [assumptions (thunk null)])
 
     ; Assume dst and src each are either 0 or 6
-    (define dst (choose* 0 1 2 6))
-    (define src (choose* 0 1 2 6))
+    (define dst (choose* 0 3 6))
+    (define src (choose* 0 3 6))
 
     ; Create a symbolic register content for each BPF register
     (define-symbolic* r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 (bitvector 64))
@@ -256,7 +256,9 @@
     ; triggered by division by zero for example. For now it should suffice to guard with "when"
     (when pre
 
-      (run-jit insn code dst src off imm ctx)
+      (for/all ([src src #:exhaustive])
+        (for/all ([dst dst #:exhaustive])
+          (run-jit insn code dst src off imm ctx)))
       (define insns (context-insns ctx))
 
       ; The next instruction is in the right place
