@@ -4,7 +4,10 @@ This repository contains a tool for formally verifying
 the Linux BPF JITs that builds
 on our verification framework [Serval].
 
-We used this tool to find the bugs in the RV64 BPF JIT
+We used this tool to help develop the RV32 BPF JIT
+(in `arch/riscv/net/bpf_jit_comp32.c`).
+
+We also used this tool to find the bugs in the RV64 BPF JIT
 ([1e692f09e091]),
 and also to review the patches that add support for far jumps and branching:
 
@@ -171,18 +174,31 @@ counter and the RISC-V program counter.
 
 ## What is verified?
 
-The test cases under `racket/test` show which instructions
-the JIT is currently verified for. For these instructions,
+The test cases under `racket/test/` show which instructions
+the JIT is currently verified for. For those instructions,
 it proves that the JIT is correct for all possible initial
-register values, for all jump offsets, for all immediate values,
-etc.
+register values, for all jump offsets, for all immediate values, etc.
 
-- All `BPF_ALU64 | BPF_X` instructions.
-- All `BPF_ALU | BPF_X` instructions.
-- All `BPF_ALU64 | BPF_K` instructions, except `MUL`, `DIV`, and `MOD`, which are tested, but not verified.
-- All `BPF_ALU | BPF_K` instructions, except `MUL`, `DIV`, and `MOD`, which are tested, but not verified.
-- All (`BPF_JMP`, `BPF_JMP32`) instructions, except
-  for `BPF_CALL`, `BPF_EXIT`, and `BPF_TAIL_CALL`.
+## Generating the RV32 JIT.
+
+The RV32 JIT is split in two parts: the Racket implementation
+in `racket/rv32/bpf_jit_comp32.rkt` contains the code required
+for generating RV32 instruction sequences for a given BPF instruction,
+and `racket/rv32/bpf_jit_comp32.c.tmpl` is a template containing
+glue C code required to have the JIT interface compile in C and
+interface with the rest of the kernel. The template
+contains holes that are filled in by extracting the corresponding Racket
+source code to C.
+
+The final C code in `arch/riscv/net/bpf_jit_comp32.c` can be generated
+from these two components via:
+
+```sh
+make arch/riscv/net/bpf_jit_comp32.c
+```
+
+This file can be copied to the Linux source tree for building
+and testing.
 
 ## Caveats / limitations
 
