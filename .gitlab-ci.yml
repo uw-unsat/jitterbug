@@ -7,10 +7,6 @@ before_script:
   - raco pkg remove serval
   - raco pkg install ./serval
 
-verify-rv64-jit:
+verify-all:
   script:
-    - raco test --jobs 8 rv64/test/*.rkt
-
-verify-rv32-jit:
-  script:
-    - raco test --jobs 8 rv32/test/*.rkt
+    - raco test --jobs 8 racket/test

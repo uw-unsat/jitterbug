@@ -1,7 +1,7 @@
 # Linux eBPF JIT verification
 
 This repository contains a tool for formally verifying
-the Linux RV64 BPF JIT that builds
+the Linux BPF JITs that builds
 on our verification framework [Serval].
 
 We used this tool to find the bugs in the RV64 BPF JIT
@@ -13,7 +13,7 @@ and also to review the patches that add support for far jumps and branching:
 
 ## How to install dependencies
 
-- [Racket] (tested on v7.5)
+- [Racket] (tested on v7.6 and v7.6-cs)
 - [Serval]
 
 After installing Racket, you can a good version of Serval with
@@ -26,41 +26,48 @@ raco pkg install --auto ./serval
 
 ## Directory structure
 
-`lib/bpf-common.rkt` contains the BPF JIT correctness
+`racket/lib/bpf-common.rkt` contains the BPF JIT correctness
 specification and other common BPF functionality.
 
-`lib/riscv-common.rkt` provides features specific
+`racket/lib/riscv-common.rkt` provides features specific
 to the JIT for the RISC-V ISA.
 
-`rv64/bpf_jit_riscv64.c` contains the C implementation
+`arch/riscv/net/bpf_jit_comp.c` contains the C implementation
 of the BPF JIT for rv64 from Linux.
 
-`rv64/bpf_jit_riscv64.rkt` is a manual translation
+`racket/rv64/bpf_jit_riscv64.rkt` is a manual translation
 of the C implementation into Rosette for verification.
 
-`rv64/test/` contains verification test cases for
+`racket/rv32/bpf_jit_comp32.rkt` is a Racket implementation
+of a BPF JIT for rv32.
+
+`arch/riscv/net/bpf_jit_comp32.c` contains the C implementation
+of the BPF JIT for rv32. It is generated from the
+`racket/rv32/bpf_jit_comp32.c.tmpl` using the Racket implementation.
+
+`racket/test/` contains verification test cases for
 different classes of instructions.
 
 ## Running verification
 
 ```sh
-raco test --jobs 8 rv64/test/*.rkt
+raco test --jobs 8 racket/test
 ```
 
 runs all of the verification test cases in parallel
-using 8 jobs. It takes around 1 hour to complete
-on a modern desktop. You can also run
+using 8 jobs. You can also run
 individual files for a specific class of instructions,
 e.g.,
 
 ```sh
-raco test rv64/test/riscv64-alu64-x.rkt
+raco test racket/test/rv64/riscv64-alu32-x.rkt
 ```
 
 ## Finding bugs via verification
 
 As an example, let's inject a bug fixed in commit [1e692f09e091].
-Specifically, remove the zero extension for `BPF_ALU|BPF_ADD|BPF_X`:
+Specifically, remove the zero extension for `BPF_ALU|BPF_ADD|BPF_X`
+in `racket/rv64/bpf_jit_riscv64.rkt`:
 
 ```
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ADD 'BPF_X)
@@ -79,7 +86,7 @@ Now we have a buggy JIT implementation:
 Run the verification:
 
 ```sh
-raco test rv64/test/riscv64-alu32-x.rkt
+raco test racket/test/rv64/riscv64-alu32-x.rkt
 ```
 
 Verification will fail with a counterexample:
@@ -90,7 +97,7 @@ Running test "VERIFY (BPF_ALU BPF_ADD BPF_X)"
 riscv64-alu32-x tests > VERIFY (BPF_ALU BPF_ADD BPF_X)
 FAILURE
 name:       check-unsat?
-location:   /Users/lukenels/repo/bpf-jit-verif/lib/bpf-common.rkt:218:4
+location:   [...]/bpf-common.rkt:218:4
 params:
   '((model
    [x?$0 #f]
@@ -164,7 +171,7 @@ counter and the RISC-V program counter.
 
 ## What is verified?
 
-The test cases under `rv64/test` show which instructions
+The test cases under `racket/test` show which instructions
 the JIT is currently verified for. For these instructions,
 it proves that the JIT is correct for all possible initial
 register values, for all jump offsets, for all immediate values,
