@@ -4,7 +4,6 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
 
 before_script:
-  - raco pkg remove serval
   - raco pkg install ./serval
 
 verify-all:
