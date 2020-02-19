@@ -11,6 +11,7 @@
   rosette/lib/synthax
   rosette/lib/angelic
   "../lib/bpf-common.rkt"
+  "../lib/solver.rkt"
   "spec.rkt")
 
 (provide (all-defined-out))
@@ -132,10 +133,10 @@
     [(tmp) "RV_REG_T0"]
     [(tmp2) "RV_REG_T1"]
     [(zero) "RV_REG_ZERO"]
-    [(hisrc) "hi(src)"]
-    [(losrc) "lo(src)"]
-    [(hidst) "hi(dst)"]
-    [(lodst) "lo(dst)"]))
+    [(hisrc) "hi(rs)"]
+    [(losrc) "lo(rs)"]
+    [(hidst) "hi(rd)"]
+    [(lodst) "lo(rd)"]))
 
 (define (render-immediate immediate)
   (format "0x~x" (bitvector->natural immediate)))
@@ -155,7 +156,7 @@
 
 (define (render-jit jit)
   (define instrs (string-join (map render-instr (vector->list jit)) "\n" #:after-last "\n"))
-  (format "void emit_op(u8 dst, u8 src, s32 imm, struct rv_jit_context *ctx) {\n~a}" instrs))
+  (format "void emit_op(u8 rd, u8 rs, s32 imm, struct rv_jit_context *ctx) {\n~a}" instrs))
 
 (define (synth-jit-loop op #:maxsize maxsize)
   (let/ec k
@@ -175,18 +176,14 @@
 (define-syntax-rule (jit-synthesize-case code)
   (test-case+ (format "SYNTHESIZE ~s" code)
     (begin
-      (define boolector-path (getenv "BOOLECTOR"))
-      (define solver (if boolector-path (boolector #:path boolector-path) (current-solver)))
-      (parameterize
-         ([riscv:XLEN 32]
-          [current-bitwidth #f]
-          [core:target-endian 'little]
-          [core:target-pointer-bitwidth 32]
-          [core:bvmul-proc bvmul-uf]
-          [core:bvudiv-proc bvudiv-uf]
-          [core:bvurem-proc bvurem-uf]
-          [riscv:bvmulhu-proc bvmulhu-uf]
-          [current-solver solver])
-
-        (displayln (format "synthesizing using ~a" (current-solver)))
-        (synth-and-print code)))))
+      (with-prefer-boolector
+        (parameterize
+          ([riscv:XLEN 32]
+            [current-bitwidth #f]
+            [core:target-endian 'little]
+            [core:target-pointer-bitwidth 32]
+            [core:bvmul-proc bvmul-uf]
+            [core:bvudiv-proc bvudiv-uf]
+            [core:bvurem-proc bvurem-uf]
+            [riscv:bvmulhu-proc bvmulhu-uf])
+          (synth-and-print code))))))

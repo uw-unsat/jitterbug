@@ -11,6 +11,7 @@
   rosette/lib/synthax
   rosette/lib/angelic
   "../lib/bpf-common.rkt"
+  "../lib/solver.rkt"
   "spec.rkt")
 
 (provide (all-defined-out))
@@ -169,17 +170,13 @@
 (define-syntax-rule (jit-synthesize-case code)
   (test-case+ (format "SYNTHESIZE ~s" code)
     (begin
-      (define boolector-path (getenv "BOOLECTOR"))
-      (define solver (if boolector-path (boolector #:path boolector-path) (current-solver)))
-      (parameterize
-         ([riscv:XLEN 64]
-          [current-bitwidth #f]
-          [core:target-endian 'little]
-          [core:target-pointer-bitwidth 64]
-          [core:bvmul-proc bvmul-uf]
-          [core:bvudiv-proc bvudiv-uf]
-          [core:bvurem-proc bvurem-uf]
-          [current-solver solver])
-
-        (displayln (format "synthesizing using ~a" (current-solver)))
-        (synth-and-print code)))))
+      (with-prefer-boolector
+        (parameterize
+          ([riscv:XLEN 64]
+            [current-bitwidth #f]
+            [core:target-endian 'little]
+            [core:target-pointer-bitwidth 64]
+            [core:bvmul-proc bvmul-uf]
+            [core:bvudiv-proc bvudiv-uf]
+            [core:bvurem-proc bvurem-uf])
+        (synth-and-print code))))))

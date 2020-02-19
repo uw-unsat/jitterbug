@@ -6,6 +6,7 @@
   "bpf_jit_comp32.rkt"
   "../lib/riscv-common.rkt"
   "../lib/bpf-common.rkt"
+  "../lib/solver.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/interp)
@@ -129,28 +130,29 @@
 
 
 (define (check-jit code)
-  (parameterize
-    ([riscv:XLEN 32]
-     [core:target-endian 'little]
-     [core:target-pointer-bitwidth 32]
-     [core:bvmul-proc bvmul-uf]
-     [core:bvudiv-proc bvudiv-uf]
-     [core:bvurem-proc bvurem-uf]
-     [riscv:bvmulhu-proc bvmulhu-uf]
-     [assumptions null])
+  (with-default-solver
+    (parameterize
+      ([riscv:XLEN 32]
+      [core:target-endian 'little]
+      [core:target-pointer-bitwidth 32]
+      [core:bvmul-proc bvmul-uf]
+      [core:bvudiv-proc bvudiv-uf]
+      [core:bvurem-proc bvurem-uf]
+      [riscv:bvmulhu-proc bvmulhu-uf]
+      [assumptions null])
 
-    (verify-jit-refinement
-      code
-      #:target-bitwidth 32
-      #:target-insn-size (bv 4 32)
-      #:equiv cpu-equal?
-      #:run-jit run-jit
-      #:run-code run-jitted-code
-      #:init-cpu init-rv32-cpu
-      #:max-insn (bv #x100000 32)
-      #:max-target-size (bv #x800000 32)
-      #:target-cpu-pc riscv:cpu-pc
-      #:assumptions assumptions)))
+      (verify-jit-refinement
+        code
+        #:target-bitwidth 32
+        #:target-insn-size (bv 4 32)
+        #:equiv cpu-equal?
+        #:run-jit run-jit
+        #:run-code run-jitted-code
+        #:init-cpu init-rv32-cpu
+        #:max-insn (bv #x100000 32)
+        #:max-target-size (bv #x800000 32)
+        #:target-cpu-pc riscv:cpu-pc
+        #:assumptions assumptions))))
 
 (define-syntax-rule (jit-verify-case code)
   (test-case+ (format "VERIFY ~s" code) (check-jit code)))

@@ -759,8 +759,8 @@ static void emit_rv32_alu_r64(const s8 dst[], const s8 src[],
 	case BPF_SUB:
 		emit(rv_sub(RV_REG_T1, hi(rd), hi(rs)), ctx);
 		emit(rv_sltu(RV_REG_T0, lo(rd), lo(rs)), ctx);
-		emit(rv_sub(lo(rd), lo(rd), lo(rs)), ctx);
 		emit(rv_sub(hi(rd), RV_REG_T1, RV_REG_T0), ctx);
+		emit(rv_sub(lo(rd), lo(rd), lo(rs)), ctx);
 		break;
 	case BPF_AND:
 		emit(rv_and(lo(rd), lo(rd), lo(rs)), ctx);

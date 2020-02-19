@@ -185,6 +185,72 @@ the JIT is currently verified for. For those instructions,
 it proves that the JIT is correct for all possible initial
 register values, for all jump offsets, for all immediate values, etc.
 
+## Running synthesis for the RV32 JIT
+
+To help develop and optimize the RV32 JIT, we used Rosette's
+program synthesis feature to synthesize per-instruction
+compilers for a subset of BPF instructions.
+The synthesis process takes as input the BPF and RISC-V interpreters
+from Serval, the BPF JIT correctness specification, and a program
+sketch which describes the structure of the code to search for.
+
+Synthesis then exhaustively searches increasingly large candidate
+sequences in the search space until it finds one that satisfies
+the JIT correctness specification.
+The synthesis infrastructure and sketch is located in
+`racket/rv32/synthesis.rkt`.
+
+You can try this feature out by running the following:
+
+```sh
+raco test racket/test/rv32/synthesize-alu64-x.rkt
+```
+
+Note that this test will attempt to use the [Boolector]
+SMT solver first; if you do not have it installed it
+will fall back to Rosette's provided Z3 which may take
+significantly longer (more than 10x slower on my laptop).
+It will produce output similar to the following:
+
+```
+riscv32-alu64-x synthesis
+Running test "SYNTHESIZE (BPF_ALU64 BPF_SUB BPF_X)"
+Using solver #<boolector>
+Synthesizing for op '(BPF_ALU64 BPF_SUB BPF_X) with size 0
+Synthesizing for op '(BPF_ALU64 BPF_SUB BPF_X) with size 1
+Synthesizing for op '(BPF_ALU64 BPF_SUB BPF_X) with size 2
+Synthesizing for op '(BPF_ALU64 BPF_SUB BPF_X) with size 3
+Synthesizing for op '(BPF_ALU64 BPF_SUB BPF_X) with size 4
+
+Solution found for '(BPF_ALU64 BPF_SUB BPF_X):
+void emit_op(u8 rd, u8 rs, s32 imm, struct rv_jit_context *ctx) {
+    emit(rv_sub(RV_REG_T1, hi(rd), hi(rs)), ctx);
+    emit(rv_sltu(RV_REG_T0, lo(rd), lo(rs)), ctx);
+    emit(rv_sub(hi(rd), RV_REG_T1, RV_REG_T0), ctx);
+    emit(rv_sub(lo(rd), lo(rd), lo(rs)), ctx);
+}
+
+cpu time: 978 real time: 66937 gc time: 49
+```
+
+In this example, synthesis was able to find a sequence of
+four RV32 instructions that correctly emulate the behavior
+of a `BPF_ALU64 BPF_SUB BPF_X` instruction. This solution
+is printed out as a C function `emit_op`.
+You can see how this is integrated into the final JIT
+in `arch/riscv/net/bpf_jit_comp32.c`,
+in the `emit_rv32_alu_r64` function, in the
+`BPF_SUB` case. Note that the instructions in the JIT may
+be different than the solution the solver on your machine
+happens to find.
+
+You can play around with synthesizing other instructions
+by looking in the other `racket/test/rv32/synthesize-*.rkt` files,
+and uncommenting cases for other instructions in those files.
+Some of these will either take extremely long or not produce any results:
+especially those that require very long instructions sequences (64-bit shifts,
+for example), or those that use non-linear arithmetic (multiplication, division, etc.)
+
 ## Generating the RV32 JIT.
 
 The RV32 JIT is split in two parts: the Racket implementation
@@ -233,6 +299,7 @@ are currently not specified or verified:
   These bounds can be increased but will increase overall
   verification time for jumps.
 
+[Boolector]: https://boolector.github.io
 [Racket]: https://racket-lang.org
 [Serval]: https://unsat.cs.washington.edu/projects/serval/
 [1e692f09e091]: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=1e692f09e091

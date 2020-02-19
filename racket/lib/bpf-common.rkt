@@ -11,19 +11,6 @@
 
 (provide (all-defined-out))
 
-(let ([boolector-env (getenv "BOOLECTOR")]
-      [z3-env (getenv "Z3")])
-  (cond
-    [boolector-env
-     (define boolector-path (find-executable-path boolector-env))
-     (eprintf "Use Boolector: ~a\n" boolector-path)
-     (current-solver (boolector #:path (find-executable-path boolector-path)))]
-    [z3-env
-     (define z3-path (find-executable-path z3-env))
-     (eprintf "Use Z3: ~a\n" z3-path)
-     (current-solver (z3 #:path (find-executable-path z3-path)
-                         #:options (hash ':auto-config 'false ':smt.relevancy 0)))]))
-
 (define BPF_CLASS first)
 (define BPF_OP second)
 (define BPF_SRC last)

@@ -3,6 +3,7 @@
 (require
   "../lib/bpf-common.rkt"
   "../lib/riscv-common.rkt"
+  "../lib/solver.rkt"
   "bpf_jit_riscv64.rkt"
   rosette/lib/angelic
   serval/lib/unittest
@@ -80,20 +81,21 @@
     [else (exit 1)]))
 
 (define (check-jit code)
-  (parameterize ([core:bvmul-proc bvmul-uf]
-                 [core:bvudiv-proc bvudiv-uf]
-                 [core:bvurem-proc bvurem-uf])
-    (verify-jit-refinement
-      code
-      #:target-cpu-pc riscv:cpu-pc
-      #:target-insn-size (bv 4 64)
-      #:target-bitwidth 64
-      #:init-cpu init-rv64-cpu
-      #:equiv cpu-equal?
-      #:run-code run-jitted-code
-      #:run-jit emit_insn
-      #:max-insn (bv #x1000000 32)
-      #:max-target-size (bv #x8000000 32))))
+  (with-default-solver
+    (parameterize ([core:bvmul-proc bvmul-uf]
+                  [core:bvudiv-proc bvudiv-uf]
+                  [core:bvurem-proc bvurem-uf])
+      (verify-jit-refinement
+        code
+        #:target-cpu-pc riscv:cpu-pc
+        #:target-insn-size (bv 4 64)
+        #:target-bitwidth 64
+        #:init-cpu init-rv64-cpu
+        #:equiv cpu-equal?
+        #:run-code run-jitted-code
+        #:run-jit emit_insn
+        #:max-insn (bv #x1000000 32)
+        #:max-target-size (bv #x8000000 32)))))
 
 (define-syntax-rule (jit-verify-case code)
   (test-case+ (format "VERIFY ~s" code) (check-jit code)))
