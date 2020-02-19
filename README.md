@@ -19,7 +19,7 @@ and also to review the patches that add support for far jumps and branching:
 - [Racket] (tested on v7.6 and v7.6-cs)
 - [Serval]
 
-After installing Racket, you can a good version of Serval with
+After installing Racket, install a good version of Serval with
 
 ```sh
 git clone --recursive 'https://github.com/uw-unsat/bpf-jit-verif.git'
@@ -197,7 +197,7 @@ from these two components via:
 make arch/riscv/net/bpf_jit_comp32.c
 ```
 
-This file can be copied to the Linux source tree for building
+This file can be copied to the Linux kernel source tree for building
 and testing.
 
 ## Caveats / limitations
@@ -214,10 +214,6 @@ are currently not specified or verified:
 - The loop in `bpf_int_jit_compile`: verification assumes
   the `ctx->offset` mapping has already been correctly
   constructed by previous iterations.
-- Non-linear arithmetic operations with immediate operands
-  (e.g, `BPF_MUL | BPF_K`). These are difficult for solvers
-  to reason about, so instead the verifier performs random
-  testing.
 - The verified JIT is a manual Rosette port of the C version:
   mismatches in this translation can mean there are bugs
   in the C version not present in the verified one.
