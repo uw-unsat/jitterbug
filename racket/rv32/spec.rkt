@@ -85,12 +85,17 @@
     (interpret-program base riscv-cpu insns)))
 
 
+; Replace bvmul/bvudiv/bvurem with UFs, as they are expensive to
+; reason about in SMT.
+
 (define assumptions (make-parameter null))
 
 (define (commute f x y)
   (define e (equal? (f x y) (f y x)))
   (assumptions (cons e (assumptions)))
   (f x y))
+
+; Axiomatize bvmul using theorems (proved in lemmas.lean).
 
 (define (bvmulhu-uf x y)
   (define-symbolic bvmulhu32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))

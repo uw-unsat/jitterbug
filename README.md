@@ -44,6 +44,12 @@ of the C implementation into Rosette for verification.
 `racket/rv32/bpf_jit_comp32.rkt` is a Racket implementation
 of a BPF JIT for rv32.
 
+`racket/rv32/spec.rkt` contains the specification of the BPF JIT
+for rv32.
+
+`racket/rv32/lemmas.lean` contains the axiomatization of bitvector
+operations in Lean.
+
 `arch/riscv/net/bpf_jit_comp32.c` contains the C implementation
 of the BPF JIT for rv32. It is generated from the
 `racket/rv32/bpf_jit_comp32.c.tmpl` using the Racket implementation.
