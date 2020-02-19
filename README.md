@@ -29,20 +29,31 @@ raco pkg install --auto ./serval
 
 ## Directory structure
 
+`arch/riscv/net/bpf_jit_comp.c` contains the C implementation of
+the BPF JIT for rv64 from Linux.
+
+`arch/riscv/net/bpf_jit_comp32.c` contains a C implementation of
+the BPF JIT for rv32. It is generated from the Racket implementation
+under `racket/rv32/`.
+
 `racket/lib/bpf-common.rkt` contains the BPF JIT correctness
 specification and other common BPF functionality.
 
 `racket/lib/riscv-common.rkt` provides features specific
 to the JIT for the RISC-V ISA.
 
-`arch/riscv/net/bpf_jit_comp.c` contains the C implementation
-of the BPF JIT for rv64 from Linux.
-
 `racket/rv64/bpf_jit_riscv64.rkt` is a manual translation
-of the C implementation into Rosette for verification.
+of the C implementation into Racket for verification.
 
-`racket/rv32/bpf_jit_comp32.rkt` is a Racket implementation
-of a BPF JIT for rv32.
+`racket/rv64/spec.rkt` contains the specification of the BPF JIT
+for rv64.
+
+`racket/rv64/synthesis.rkt` contains the synthesis infrastructure
+and sketch for the BPF JIT for rv64.
+
+`racket/rv32/bpf_jit_comp32.rkt` is a Racket implementation of the
+BPF JIT for rv32. It is used with `racket/rv32/bpf_jit_comp32.c.tmpl`
+to generate the final C implementation.
 
 `racket/rv32/spec.rkt` contains the specification of the BPF JIT
 for rv32.
@@ -50,11 +61,10 @@ for rv32.
 `racket/rv32/lemmas.lean` contains the axiomatization of bitvector
 operations in Lean.
 
-`arch/riscv/net/bpf_jit_comp32.c` contains the C implementation
-of the BPF JIT for rv32. It is generated from the
-`racket/rv32/bpf_jit_comp32.c.tmpl` using the Racket implementation.
+`racket/rv32/synthesis.rkt` contains the synthesis infrastructure
+and sketch for the BPF JIT for rv32.
 
-`racket/test/` contains verification test cases for
+`racket/test/` contains verification and synthesis test cases for
 different classes of instructions.
 
 ## Running verification
@@ -69,7 +79,7 @@ individual files for a specific class of instructions,
 e.g.,
 
 ```sh
-raco test racket/test/rv64/riscv64-alu32-x.rkt
+raco test racket/test/rv64/verify-alu32-x.rkt
 ```
 
 ## Finding bugs via verification
@@ -95,7 +105,7 @@ Now we have a buggy JIT implementation:
 Run the verification:
 
 ```sh
-raco test racket/test/rv64/riscv64-alu32-x.rkt
+raco test racket/test/rv64/verify-alu32-x.rkt
 ```
 
 Verification will fail with a counterexample:
@@ -178,14 +188,7 @@ This complexity comes from having to prove that the generated
 instructions preserve a correspondence between the BPF program
 counter and the RISC-V program counter.
 
-## What is verified?
-
-The test cases under `racket/test/` show which instructions
-the JIT is currently verified for. For those instructions,
-it proves that the JIT is correct for all possible initial
-register values, for all jump offsets, for all immediate values, etc.
-
-## Running synthesis for the RV32 JIT
+## Synthesis for the RV32 JIT
 
 To help develop and optimize the RV32 JIT, we used Rosette's
 program synthesis feature to synthesize per-instruction
@@ -193,12 +196,9 @@ compilers for a subset of BPF instructions.
 The synthesis process takes as input the BPF and RISC-V interpreters
 from Serval, the BPF JIT correctness specification, and a program
 sketch which describes the structure of the code to search for.
-
 Synthesis then exhaustively searches increasingly large candidate
 sequences in the search space until it finds one that satisfies
 the JIT correctness specification.
-The synthesis infrastructure and sketch is located in
-`racket/rv32/synthesis.rkt`.
 
 You can try this feature out by running the following:
 
@@ -208,7 +208,7 @@ raco test racket/test/rv32/synthesize-alu64-x.rkt
 
 Note that this test will attempt to use the [Boolector]
 SMT solver first; if you do not have it installed it
-will fall back to Rosette's provided Z3 which may take
+will fall back to Rosette's provided Z3, which may take
 significantly longer (more than 10x slower on my laptop).
 It will produce output similar to the following:
 
@@ -251,7 +251,7 @@ Some of these will either take extremely long or not produce any results:
 especially those that require very long instructions sequences (64-bit shifts,
 for example), or those that use non-linear arithmetic (multiplication, division, etc.)
 
-## Generating the RV32 JIT.
+## Generating the RV32 JIT
 
 The RV32 JIT is split in two parts: the Racket implementation
 in `racket/rv32/bpf_jit_comp32.rkt` contains the code required
@@ -273,6 +273,11 @@ This file can be copied to the Linux kernel source tree for building
 and testing.
 
 ## Caveats / limitations
+
+The test cases under `racket/test/` show which instructions
+the JIT is currently verified for. For those instructions,
+it proves that the JIT is correct for all possible initial
+register values, for all jump offsets, for all immediate values, etc.
 
 There are several properties of the JIT that
 are currently not specified or verified:
