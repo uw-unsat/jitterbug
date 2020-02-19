@@ -74,6 +74,8 @@ enum {
 #define RV_REG_TCC		RV_REG_T6
 #define RV_REG_TCC_SAVED	RV_REG_S7
 
+#define NR_JIT_ITERATIONS	16	/* Number of iterations to try until offsets converge. */
+
 static const s8 bpf2rv32[][2] = {
 	/* Return value from in-kernel function, and exit value from eBPF */
 	[BPF_REG_0] = {RV_REG_S2, RV_REG_S1},
@@ -309,11 +311,6 @@ static u32 rv_beq(u8 rs1, u8 rs2, u16 imm12_1)
 	return rv_sb_insn(imm12_1, rs2, rs1, 0, 0x63);
 }
 
-static u32 rv_beqz(u8 rs, u16 imm12_1)
-{
-	return rv_beq(rs, RV_REG_ZERO, imm12_1);
-}
-
 static u32 rv_bltu(u8 rs1, u8 rs2, u16 imm12_1)
 {
 	return rv_sb_insn(imm12_1, rs2, rs1, 6, 0x63);
@@ -342,11 +339,6 @@ static u32 rv_bne(u8 rs1, u8 rs2, u16 imm12_1)
 static u32 rv_blt(u8 rs1, u8 rs2, u16 imm12_1)
 {
 	return rv_sb_insn(imm12_1, rs2, rs1, 4, 0x63);
-}
-
-static u32 rv_bltz(u8 rs, u16 imm12_1)
-{
-	return rv_blt(rs, RV_REG_ZERO, imm12_1);
 }
 
 static u32 rv_bgt(u8 rs1, u8 rs2, u16 imm12_1)
@@ -434,10 +426,10 @@ static void emit_imm(const s8 rd, s32 imm, struct rv_jit_context *ctx)
 
 static void emit_imm32(const s8 *rd, s32 imm, struct rv_jit_context *ctx)
 {
-	/* Emit immediate into lower bits */
+	/* Emit immediate into lower bits. */
 	emit_imm(lo(rd), imm, ctx);
 
-	/* Sign-extend into upper bits */
+	/* Sign-extend into upper bits. */
 	if (imm >= 0)
 		emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
 	else
@@ -499,7 +491,7 @@ static void __build_epilogue(bool is_tail_call, struct rv_jit_context *ctx)
 		 * Skip first instruction of prologue which
 		 * initializes tail call counter.
 		 * Assume t0 contains address of target program,
-		 * see __build_epilogue.
+		 * see emit_bpf_tail_call.
 		 */
 		emit(rv_jalr(RV_REG_ZERO, RV_REG_T0, 4), ctx);
 	} else {
@@ -979,6 +971,99 @@ static int emit_rv32_branch_r64(const s8 src1[], const s8 src2[],
 	return 0;
 }
 
+static int invert_bpf_cond(u8 cond)
+{
+	switch (cond) {
+	case BPF_JEQ:
+		return BPF_JNE;
+	case BPF_JGT:
+		return BPF_JLE;
+	case BPF_JLT:
+		return BPF_JGE;
+	case BPF_JGE:
+		return BPF_JLT;
+	case BPF_JLE:
+		return BPF_JGT;
+	case BPF_JNE:
+		return BPF_JEQ;
+	case BPF_JSGT:
+		return BPF_JSLE;
+	case BPF_JSLT:
+		return BPF_JSGE;
+	case BPF_JSGE:
+		return BPF_JSLT;
+	case BPF_JSLE:
+		return BPF_JSGT;
+	}
+	return -1;
+}
+
+static int emit_bcc(u8 op, u8 rd, u8 rs, int rvoff,
+		    struct rv_jit_context *ctx)
+{
+	int e, s = ctx->ninsns;
+	bool far = false;
+	int off;
+
+	if (op == BPF_JSET) {
+		/* BPF_JSET is a special case: it has no inverse so we
+		 * always treat it as a far branch.
+		 */
+		far = true;
+	} else if (!is_13b_int(rvoff)) {
+		op = invert_bpf_cond(op);
+		far = true;
+	}
+
+	off = far ? 6 : (rvoff >> 1);
+
+	switch (op) {
+	case BPF_JEQ:
+		emit(rv_beq(rd, rs, off), ctx);
+		break;
+	case BPF_JGT:
+		emit(rv_bgtu(rd, rs, off), ctx);
+		break;
+	case BPF_JLT:
+		emit(rv_bltu(rd, rs, off), ctx);
+		break;
+	case BPF_JGE:
+		emit(rv_bgeu(rd, rs, off), ctx);
+		break;
+	case BPF_JLE:
+		emit(rv_bleu(rd, rs, off), ctx);
+		break;
+	case BPF_JNE:
+		emit(rv_bne(rd, rs, off), ctx);
+		break;
+	case BPF_JSGT:
+		emit(rv_bgt(rd, rs, off), ctx);
+		break;
+	case BPF_JSLT:
+		emit(rv_blt(rd, rs, off), ctx);
+		break;
+	case BPF_JSGE:
+		emit(rv_bge(rd, rs, off), ctx);
+		break;
+	case BPF_JSLE:
+		emit(rv_ble(rd, rs, off), ctx);
+		break;
+	case BPF_JSET:
+		emit(rv_and(RV_REG_T0, rd, rs), ctx);
+		emit(rv_beq(RV_REG_T0, RV_REG_ZERO, 6), ctx);
+		break;
+	}
+
+	if (far) {
+		e = ctx->ninsns;
+		/* Adjust for extra insns. */
+		rvoff -= (e - s) << 2;
+		emit_jump_and_link(RV_REG_ZERO, rvoff, true, ctx);
+	}
+	return 0;
+
+}
+
 static int emit_rv32_branch_r32(const s8 src1[], const s8 src2[],
 				s32 rvoff,
 				struct rv_jit_context *ctx,
@@ -991,47 +1076,13 @@ static int emit_rv32_branch_r32(const s8 src1[], const s8 src2[],
 	const s8 *rs1 = rv32_bpf_get_reg32(src1, tmp1, ctx);
 	const s8 *rs2 = rv32_bpf_get_reg32(src2, tmp2, ctx);
 
-	switch (op) {
-	case BPF_JEQ:
-		emit(rv_bne(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JGT:
-		emit(rv_bleu(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JLT:
-		emit(rv_bgeu(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JGE:
-		emit(rv_bltu(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JLE:
-		emit(rv_bgtu(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JNE:
-		emit(rv_beq(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JSGT:
-		emit(rv_ble(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JSLT:
-		emit(rv_bge(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JSGE:
-		emit(rv_blt(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JSLE:
-		emit(rv_bgt(lo(rs1), lo(rs2), 6), ctx);
-		break;
-	case BPF_JSET:
-		emit(rv_and(RV_REG_T0, lo(rs1), lo(rs2)), ctx);
-		emit(rv_beq(RV_REG_T0, RV_REG_ZERO, 6), ctx);
-		break;
-	}
-
 	e = ctx->ninsns;
 	/* Adjust for extra insns. */
 	rvoff -= (e - s) << 2;
-	emit_jump_and_link(RV_REG_ZERO, rvoff, true, ctx);
+
+	if (emit_bcc(op, lo(rs1), lo(rs2), rvoff, ctx))
+		return -1;
+
 	return 0;
 }
 
@@ -1080,7 +1131,7 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	tc_ninsn = insn ? ctx->offset[insn] - ctx->offset[insn - 1] :
 		ctx->offset[0];
 
-	/* t1 = array->map.max_entries */
+	/* max_entries = array->map.max_entries; */
 	off = offsetof(struct bpf_array, map.max_entries);
 	if (!is_12b_int(off)) {
 		pr_err("bpf-jit: offset=%d not supported\n", off);
@@ -1088,29 +1139,20 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	}
 	emit(rv_lw(RV_REG_T1, off, lo(arr_reg)), ctx);
 
-	/* if (index > t1)
+	/* if (index >= max_entries)
 	 *   goto out;
 	 */
 	off = (tc_ninsn - (ctx->ninsns - start_insn)) << 2;
-	if (!is_13b_int(off)) {
-		pr_err("bpf-jit: offset=%d not supported\n", off);
-		return -1;
-	}
-	emit(rv_bgeu(lo(idx_reg), RV_REG_T1, off >> 1), ctx);
+	emit_bcc(BPF_JGE, lo(idx_reg), RV_REG_T1, off, ctx);
 
-
-	/* if (--tcc < 0)
+	/* if ((temp_tcc = tcc - 1) < 0)
 	 *   goto out;
 	 */
 	emit(rv_addi(RV_REG_T1, RV_REG_TCC, -1), ctx);
 	off = (tc_ninsn - (ctx->ninsns - start_insn)) << 2;
-	if (!is_13b_int(off)) {
-		pr_err("bpf-jit: offset=%d not supported\n", off);
-		return -1;
-	}
-	emit(rv_bltz(RV_REG_T1, off >> 1), ctx);
+	emit_bcc(BPF_JSLT, RV_REG_T1, RV_REG_ZERO, off, ctx);
 
-	/* prog = array->ptrs[index]
+	/* prog = array->ptrs[index];
 	 * if (!prog)
 	 *   goto out;
 	 */
@@ -1123,13 +1165,11 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	}
 	emit(rv_lw(RV_REG_T0, off, RV_REG_T0), ctx);
 	off = (tc_ninsn - (ctx->ninsns - start_insn)) << 2;
-	if (!is_13b_int(off)) {
-		pr_err("bpf-jit: offset=%d not supported\n", off);
-		return -1;
-	}
-	emit(rv_beqz(RV_REG_T0, off >> 1), ctx);
+	emit_bcc(BPF_JEQ, RV_REG_T0, RV_REG_ZERO, off, ctx);
 
-	/* goto *(prog->bpf_func + 4) */
+	/* tcc = temp_tcc;
+	 * goto *(prog->bpf_func + 4);
+	 */
 	off = offsetof(struct bpf_prog, bpf_func);
 	if (!is_12b_int(off)) {
 		pr_err("bpf-jit: offset=%d not supported\n", off);
@@ -1137,7 +1177,7 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	}
 	emit(rv_lw(RV_REG_T0, off, RV_REG_T0), ctx);
 	emit(rv_addi(RV_REG_TCC, RV_REG_T1, 0), ctx);
-	/* Build epilogue jumps to *(t0 + 4) */
+	/* Epilogue jumps to *(t0 + 4) */
 	__build_epilogue(true, ctx);
 	return 0;
 }
@@ -1366,11 +1406,16 @@ static int emit_insn(const struct bpf_insn *insn,
 	case BPF_ALU | BPF_LSH | BPF_K:
 	case BPF_ALU | BPF_RSH | BPF_K:
 	case BPF_ALU | BPF_ARSH | BPF_K:
+		/* mul,div,mod are handled in the BPF_X case
+		 * since there are no RISC-V equivalents.
+		 */
 		emit_rv32_alu_i32(dst, imm, ctx, BPF_OP(code));
 		break;
 
 	case BPF_ALU | BPF_NEG:
-		/* src is ignored---choose a register known not to be stacked */
+		/* src is ignored---choose tmp2 as a dummy register
+		 * since it is not on the stack.
+		 */
 		emit_rv32_alu_r32(dst, tmp2, ctx, BPF_OP(code));
 		break;
 
@@ -1602,12 +1647,14 @@ static void build_prologue(struct rv_jit_context *ctx)
 
 	stack_adjust += 4 * BPF_JIT_SCRATCH_REGS;
 
-	/* First instruction sets tail-call-counter. */
+	/* First instruction sets tail-call-counter,
+	 * skipped by tail call.
+	 */
 	emit(rv_addi(RV_REG_TCC, RV_REG_ZERO, MAX_TAIL_CALL_CNT), ctx);
 
 	emit(rv_addi(RV_REG_SP, RV_REG_SP, -stack_adjust), ctx);
 
-	/* Save callee-save registers */
+	/* Save callee-save registers. */
 	emit(rv_sw(RV_REG_SP, store_offset - 0, RV_REG_RA), ctx);
 	emit(rv_sw(RV_REG_SP, store_offset - 4, RV_REG_FP), ctx);
 	emit(rv_sw(RV_REG_SP, store_offset - 8, RV_REG_S1), ctx);
@@ -1618,13 +1665,14 @@ static void build_prologue(struct rv_jit_context *ctx)
 	emit(rv_sw(RV_REG_SP, store_offset - 28, RV_REG_S6), ctx);
 	emit(rv_sw(RV_REG_SP, store_offset - 32, RV_REG_S7), ctx);
 
+	/* Set fp: used as the base address for stacked BPF registers. */
 	emit(rv_addi(RV_REG_FP, RV_REG_SP, stack_adjust), ctx);
 
-	/* Set up BPF stack pointer */
+	/* Set up BPF stack pointer. */
 	emit(rv_addi(lo(bpf2rv32[BPF_REG_FP]), RV_REG_SP, bpf_stack_adjust), ctx);
 	emit(rv_addi(hi(bpf2rv32[BPF_REG_FP]), RV_REG_ZERO, 0), ctx);
 
-	/* Set up context pointer */
+	/* Set up context pointer. */
 	emit(rv_addi(lo(bpf2rv32[BPF_REG_1]), RV_REG_A0, 0), ctx);
 	emit(rv_addi(hi(bpf2rv32[BPF_REG_1]), RV_REG_ZERO, 0), ctx);
 
@@ -1641,15 +1689,14 @@ static int build_body(struct rv_jit_context *ctx, bool extra_pass, int *offset)
 		int ret;
 
 		ret = emit_insn(insn, ctx, extra_pass);
-		if (ret > 0) {
+		if (ret > 0)
+			/* BPF_LD | BPF_IMM | BPF_DW:
+			 * Skip next instruction.
+			 */
 			i++;
-			if (offset)
-				offset[i] = ctx->ninsns;
-			continue;
-		}
 		if (offset)
 			offset[i] = ctx->ninsns;
-		if (ret)
+		if (ret < 0)
 			return ret;
 	}
 	return 0;
@@ -1719,7 +1766,7 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 		ctx->offset[i] = prev_ninsns;
 	}
 
-	for (i = 0; i < 16; i++) {
+	for (i = 0; i < NR_JIT_ITERATIONS; i++) {
 		pass++;
 		ctx->ninsns = 0;
 		if (build_body(ctx, extra_pass, ctx->offset)) {
@@ -1750,7 +1797,7 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 		prev_ninsns = ctx->ninsns;
 	}
 
-	if (i == 16) {
+	if (i == NR_JIT_ITERATIONS) {
 		pr_err("bpf-jit: image did not converge in <%d passes!\n", i);
 		bpf_jit_binary_free(jit_data->header);
 		prog = orig_prog;

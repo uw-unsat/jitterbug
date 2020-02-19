@@ -425,6 +425,63 @@
 
   (riscv_bpf_put_reg32 dst rd ctx))
 
+(define (invert_bpf_cond cond_)
+  (case cond_
+    [(BPF_JEQ) 'BPF_JNE]
+    [(BPF_JGT) 'BPF_JLE]
+    [(BPF_JLT) 'BPF_JGE]
+    [(BPF_JGE) 'BPF_JLT]
+    [(BPF_JLE) 'BPF_JGT]
+    [(BPF_JNE) 'BPF_JEQ]
+    [(BPF_JSGT) 'BPF_JSLE]
+    [(BPF_JSLT) 'BPF_JSGE]
+    [(BPF_JSGE) 'BPF_JSLT]
+    [(BPF_JSLE) 'BPF_JSGT]
+    [else (assert #f)]))
+
+(define (emit_bcc op rd rs rvoff ctx)
+  (define s (context-ninsns ctx))
+  (define far #f)
+
+  (cond
+    [(equal? op 'BPF_JSET)
+      (set! far #t)]
+    [(! (is_13b_int rvoff))
+      (set! op (invert_bpf_cond op))
+      (set! far #t)])
+
+  (define off (if far (bv 6 32) (bvashr rvoff (bv 1 32))))
+
+  (switch op #:id SWITCH_emit_bcc
+    [(BPF_JEQ)
+      (emit (rv_beq rd rs off) ctx)]
+    [(BPF_JGT)
+      (emit (rv_bgtu rd rs off) ctx)]
+    [(BPF_JLT)
+      (emit (rv_bltu rd rs off) ctx)]
+    [(BPF_JGE)
+      (emit (rv_bgeu rd rs off) ctx)]
+    [(BPF_JLE)
+      (emit (rv_bleu rd rs off) ctx)]
+    [(BPF_JNE)
+      (emit (rv_bne rd rs off) ctx)]
+    [(BPF_JSGT)
+      (emit (rv_bgt rd rs off) ctx)]
+    [(BPF_JSLT)
+      (emit (rv_blt rd rs off) ctx)]
+    [(BPF_JSGE)
+      (emit (rv_bge rd rs off) ctx)]
+    [(BPF_JSLE)
+      (emit (rv_ble rd rs off) ctx)]
+    [(BPF_JSET)
+      (emit (rv_and RV_REG_T0 rd rs) ctx)
+      (emit (rv_beq RV_REG_T0 RV_REG_ZERO 6) ctx)])
+
+    (when far
+      (define e (context-ninsns ctx))
+      (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
+      (emit_jump_and_link RV_REG_ZERO rvoff #t ctx))
+)
 
 (define (emit_rv32_branch_r32 src1 src2 rvoff ctx op)
   (define tmp1 (bpf2rv32 TMP_REG_1))
@@ -435,34 +492,10 @@
   (define rs1 (riscv_bpf_get_reg32 src1 tmp1 ctx))
   (define rs2 (riscv_bpf_get_reg32 src2 tmp2 ctx))
 
-  (switch op #:id SWITCH_emit_rv32_branch_r32
-    [(BPF_JEQ)
-      (emit (rv_bne (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JGT)
-      (emit (rv_bleu (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JLT)
-      (emit (rv_bgeu (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JGE)
-      (emit (rv_bltu (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JLE)
-      (emit (rv_bgtu (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JNE)
-      (emit (rv_beq (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JSGT)
-      (emit (rv_ble (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JSLT)
-      (emit (rv_bge (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JSGE)
-      (emit (rv_blt (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JSLE)
-      (emit (rv_bgt (lo rs1) (lo rs2) 6) ctx)]
-    [(BPF_JSET)
-      (emit (rv_and RV_REG_T0 (lo rs1) (lo rs2)) ctx)
-      (emit (rv_beq RV_REG_T0 RV_REG_ZERO 6) ctx)])
-
   (define e (context-ninsns ctx))
   (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
-  (emit_jump_and_link RV_REG_ZERO rvoff #t ctx))
+
+  (emit_bcc op (lo rs1) (lo rs2) rvoff ctx))
 
 
 (define (emit_rv32_branch_r64 src1 src2 rvoff ctx op)

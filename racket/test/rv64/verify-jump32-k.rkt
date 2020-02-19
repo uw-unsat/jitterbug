@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../../rv64/bpf_jit_riscv64.rkt")
+(require "../../rv64/spec.rkt" "../../rv64/bpf_jit_riscv64.rkt")
 (require serval/lib/unittest)
 
 (define tests

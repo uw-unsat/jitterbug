@@ -1,4 +1,4 @@
-#lang racket
+#lang rosette
 
 (require (for-syntax racket/string))
 (provide (all-defined-out))
