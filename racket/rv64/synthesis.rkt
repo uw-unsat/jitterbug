@@ -109,6 +109,7 @@
       #:max-insn (bv #x100000 32)
       #:max-target-size (bv #x800000 32)
       #:target-cpu-pc riscv:cpu-pc
+      #:synthesis #t
       #:add-symbolics (lambda (n) (set! s (append s n)))
       #:assumptions (thunk null))))
 

@@ -124,11 +124,11 @@
     #:max-target-size [max-target-size (bv 8192 32)]
     #:max-insn [max-insn (bv 2048 32)]
     #:add-symbolics [add-symbolics (lambda n (void))] ; Accumulate symbolics (for synthesis)
-    #:assumptions [assumptions (thunk null)])
+    #:assumptions [assumptions (thunk null)]
+    #:synthesis [synthesis #f])
 
-    ; Assume dst and src each are either 0 or 6
-    (define dst (choose* 0))
-    (define src (choose* 1))
+    (define dst (if synthesis (choose* 0 1) (choose* 0 6)))
+    (define src (if synthesis (choose* 0 1) (choose* 0 6)))
 
     ; Create a symbolic register content for each BPF register
     (define-symbolic* r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 (bitvector 64))
@@ -243,7 +243,9 @@
     ; triggered by division by zero for example. For now it should suffice to guard with "when"
     (when pre
 
-      (run-jit insn code dst src off imm ctx)
+      (for/all ([src src #:exhaustive])
+        (for/all ([dst dst #:exhaustive])
+          (run-jit insn code dst src off imm ctx)))
       (define insns (context-insns ctx))
 
       ; The next instruction is in the right place
