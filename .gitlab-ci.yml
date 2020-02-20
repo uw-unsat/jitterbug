@@ -2,6 +2,8 @@ image: unsat/serval-tools:latest
 
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
+  BOOLECTOR: /opt/boolector/3.2.0/bin/boolector
+  Z3: /opt/z3/4.8.7/bin/z3
 
 before_script:
   - raco pkg install ./serval
