@@ -247,9 +247,15 @@ happens to find.
 You can play around with synthesizing other instructions
 by looking in the other `racket/test/rv32/synthesize-*.rkt` files,
 and uncommenting cases for other instructions in those files.
-Some of these will either take extremely long or not produce any results:
-especially those that require very long instructions sequences (64-bit shifts,
-for example), or those that use non-linear arithmetic (multiplication, division, etc.)
+
+Not every instruction sequence in the final JIT was found using synthesis.
+Many synthesis queries either take extremely long or do not
+produce any results: especially those that require very long
+instruction sequences (e.g., 64-bit shifts), or those that
+use non-linear arithmetic (multiplication, division, etc.)
+For these instructions, we manually write an implementation
+and verify the correctness using the other techniques described
+in this guide.
 
 ## Generating the RV32 JIT
 
