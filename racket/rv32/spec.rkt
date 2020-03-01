@@ -2,11 +2,12 @@
 
 (require
   rosette/lib/angelic
+  serval/lib/solver
   serval/lib/unittest
   "bpf_jit_comp32.rkt"
   "../lib/riscv-common.rkt"
   "../lib/bpf-common.rkt"
-  "../lib/solver.rkt"
+  (prefix-in bvaxiom: "../lib/bvaxiom.rkt")
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/interp)
@@ -43,10 +44,10 @@
   (define regs
     (for/vector ([i (in-range 11)])
       (rv_get_bpf_reg r i)))
-  (equal? (bpf:cpu-regs b) regs))
+  (equal? (bpf:regs->vector (bpf:cpu-regs b)) regs))
 
 (define (init-rv32-cpu riscv-pc bpf-cpu)
-  (define bpf-regs (bpf:cpu-regs bpf-cpu))
+  (define bpf-regs (bpf:regs->vector (bpf:cpu-regs bpf-cpu)))
   (define globals (make-hash (list (cons 'stack (thunk (core:marray STACK_SIZE (core:mcell 4)))))))
   (define stack-top (+ #x1000 (* 4 STACK_SIZE)))
   (define symbols `((#x1000 ,stack-top B stack)))
@@ -66,7 +67,7 @@
   (cond
     [(term? n) #f]
     [(< n (vector-length instrs)) (vector-ref instrs n)]
-    [#t #f]))
+    [else #f]))
 
 (define (interpret-program base cpu instrs)
   ; cpu -> riscv cpu
@@ -77,7 +78,7 @@
       (define instr (fetch instrs base pc))
       (for/all ([i instr #:exhaustive])
         (when i
-          (riscv:interpret-instr cpu i)
+          (riscv:interpret-insn cpu i)
           (interpret-program base cpu instrs))))))
 
 (define (run-jitted-code riscv-cpu insns)
@@ -86,73 +87,38 @@
     (interpret-program base riscv-cpu insns)))
 
 
-; Replace bvmul/bvudiv/bvurem with UFs, as they are expensive to
-; reason about in SMT.
-
-(define assumptions (make-parameter null))
-
-(define (commute f x y)
-  (define e (equal? (f x y) (f y x)))
-  (assumptions (cons e (assumptions)))
-  (f x y))
-
-; Axiomatize bvmul using theorems (proved in lemmas.lean).
-
-(define (bvmulhu-uf x y)
-  (define-symbolic bvmulhu32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
-  (case (core:bv-size x)
-    [(32) (commute bvmulhu32 x y)]
-    [else (exit 1)]))
-
-(define (bvmul-uf x y)
-  (define-symbolic bvmul32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
-  (case (core:bv-size x)
-    [(64) (concat (bvadd (bvmulhu-uf (extract 31 0 x) (extract 31 0 y))
-                         (bvmul-uf (extract 31 0 x) (extract 63 32 y))
-                         (bvmul-uf (extract 63 32 x) (extract 31 0 y)))
-                  (bvmul-uf (extract 31 0 x) (extract 31 0 y)))]
-    [(32) (commute bvmul32 x y)]
-    [else (exit 1)]))
-
-(define (bvudiv-uf x y)
-  (define-symbolic bvudiv32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
-  (case (core:bv-size x)
-    ; no 64-bit bvudiv
-    [(32) (bvudiv32 x y)]
-    [else (exit 1)]))
-
-(define (bvurem-uf x y)
-  (define-symbolic bvurem32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
-  (case (core:bv-size x)
-    ; no 64-bit bvurem
-    [(32) (bvurem32 x y)]
-    [else (exit 1)]))
+(define rv32-target (make-bpf-target
+  #:target-bitwidth 32
+  #:target-pc-alignment (bv 4 32)
+  #:equiv cpu-equal?
+  #:run-jit run-jit
+  #:run-code run-jitted-code
+  #:init-cpu init-rv32-cpu
+  #:init-ctx init-ctx
+  #:bpf-to-target-pc bpf-to-target-pc
+  #:max-target-size (bv #x800000 32)
+  #:target-cpu-pc riscv:cpu-pc
+  #:code-size code-size))
 
 
 (define (check-jit code)
-  (with-default-solver
-    (parameterize
-      ([riscv:XLEN 32]
-      [core:target-endian 'little]
-      [core:target-pointer-bitwidth 32]
-      [core:bvmul-proc bvmul-uf]
-      [core:bvudiv-proc bvudiv-uf]
-      [core:bvurem-proc bvurem-uf]
-      [riscv:bvmulhu-proc bvmulhu-uf]
-      [assumptions null])
-
-      (verify-jit-refinement
-        code
-        #:target-bitwidth 32
-        #:target-insn-size (bv 4 32)
-        #:equiv cpu-equal?
-        #:run-jit run-jit
-        #:run-code run-jitted-code
-        #:init-cpu init-rv32-cpu
-        #:max-insn (bv #x100000 32)
-        #:max-target-size (bv #x800000 32)
-        #:target-cpu-pc riscv:cpu-pc
-        #:assumptions assumptions))))
+  (parameterize
+    ([riscv:XLEN 32]
+     [solver-logic 'QF_UFBV]
+     [core:target-endian 'little]
+     [core:target-pointer-bitwidth 32]
+     [max-insn (bv #x100000 32)]
+     [core:bvmul-proc bvaxiom:bvmul-uf]
+     [core:bvudiv-proc bvaxiom:bvudiv-uf]
+     [core:bvurem-proc bvaxiom:bvurem-uf]
+     [core:bvmulhu-proc bvaxiom:bvmulhu-uf]
+     [bvaxiom:assumptions null])
+    (with-default-solver
+      (check-verify
+        (bpf-jit-specification
+          code
+          rv32-target
+          #:assumptions bvaxiom:assumptions)))))
 
 (define-syntax-rule (jit-verify-case code)
   (test-case+ (format "VERIFY ~s" code) (check-jit code)))

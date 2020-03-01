@@ -8,7 +8,7 @@
   ; (emit-port (current-output-port))
 
   (define (semicolon s)
-    (if (or (string-endswith? s "}") (string-endswith? s "*/") (equal? s ""))
+    (if (or (string-suffix? s "}") (string-suffix? s "*/") (equal? s ""))
         s
         (string-append s ";")))
 
@@ -27,14 +27,18 @@
        (string-join (cons hd tl)))))
 
   (define (fmt-when expr . lst)
-    (string-append
-      "if ("
-      (fmt expr)
-      ") {\n"
-      (string-join
-        (for/list [(v lst)]
-          (string-append "\t\t\t" (semicolon (fmt v)) "\n")))
-      "\t\t}"))
+    (define single? (= 1 (length lst)))
+    (define head (string-append "if (" (fmt expr) ")"))
+    (if single?
+      (string-append
+        head
+        "\n\t\t\t"
+        (fmt (car lst)))
+      (string-append
+        head
+        " {\n"
+        (string-join (map (lambda (x) (string-append "\t\t\t" (semicolon (fmt x)) "\n")) lst))
+        "\t\t}")))
 
   (define (fmt stx)
     (define e (syntax-e stx))
@@ -58,11 +62,6 @@
            [else (format "~a(~a)" op
                          (string-join (map (lambda (v) (format "~a" (fmt v))) args) ", "))]))]
       [else (format "TODO: ~a" e)]))
-
-  (define (string-endswith? s c)
-    (if (<= (string-length c) (string-length s))
-      (equal? (substring s (- (string-length s) (string-length c))) c)
-      #f))
 
   (define (emit . vs)
     (define port (emit-port))

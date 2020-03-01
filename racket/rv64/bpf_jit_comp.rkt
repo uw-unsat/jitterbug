@@ -15,7 +15,10 @@
 (define regmap #(a5 a0 a1 a2 a3 a4 s1 s2 s3 s4 s5))
 
 (define (bpf_to_rv_reg bpf_reg ctx)
-  (define reg (vector-ref regmap bpf_reg))
+  (define reg
+    (if (integer? bpf_reg)
+      (vector-ref regmap bpf_reg)
+      (vector-ref regmap (bpf:reg-idx bpf_reg))))
   (when (member reg
     (list RV_CTX_F_SEEN_S1 RV_CTX_F_SEEN_S2
           RV_CTX_F_SEEN_S3 RV_CTX_F_SEEN_S4
@@ -426,4 +429,6 @@
           (emit_branch 'BPF_JNE RV_REG_T1 RV_REG_ZERO i rvoff ctx)]
         [else
           (emit_branch code rd RV_REG_T1 i rvoff ctx)])]
-  ))
+  )
+
+  (context-insns ctx))

@@ -3,8 +3,8 @@
 (require
   "../lib/bpf-common.rkt"
   "../lib/riscv-common.rkt"
-  "../lib/solver.rkt"
-  "bpf_jit_riscv64.rkt"
+  serval/lib/solver
+  "bpf_jit_comp.rkt"
   rosette/lib/angelic
   serval/lib/unittest
   (prefix-in core: serval/lib/core)
@@ -15,14 +15,14 @@
 (provide (all-defined-out))
 
 (define (cpu-equal? b r)
-  (define bpf-regs (bpf:cpu-regs b))
+  (define bpf-regs (bpf:regs->vector (bpf:cpu-regs b)))
   (define regs
     (for/vector [(i (in-range (vector-length bpf-regs)))]
       (riscv:gpr-ref r (vector-ref regmap i))))
-  (equal? (bpf:cpu-regs b) regs))
+  (equal? bpf-regs regs))
 
 (define (init-rv64-cpu target-pc bpf-cpu)
-  (define bpf-regs (bpf:cpu-regs bpf-cpu))
+  (define bpf-regs (bpf:regs->vector (bpf:cpu-regs bpf-cpu)))
   (define riscv-cpu (riscv:init-cpu))
   (riscv:set-cpu-pc! riscv-cpu target-pc)
   (for ([i (in-range (vector-length bpf-regs))])
@@ -50,7 +50,7 @@
       (define instr (fetch instrs base pc))
       (for/all ([i instr #:exhaustive])
         (when i
-          (riscv:interpret-instr cpu i)
+          (riscv:interpret-insn cpu i)
           (interpret-program base cpu instrs))))))
 
 ; Replace bvmul/bvudiv/bvurem with UFs, as they are expensive to
@@ -80,22 +80,31 @@
     [(32) (bvurem32 x y)]
     [else (exit 1)]))
 
+(define rv64-target (make-bpf-target
+  #:target-cpu-pc riscv:cpu-pc
+  #:target-pc-alignment (bv 4 64)
+  #:target-bitwidth 64
+  #:init-cpu init-rv64-cpu
+  #:equiv cpu-equal?
+  #:run-code run-jitted-code
+  #:run-jit emit_insn
+  #:init-ctx init-ctx
+  #:bpf-to-target-pc bpf-to-target-pc
+  #:code-size code-size
+  #:max-target-size (bv #x8000000 64)))
+
 (define (check-jit code)
-  (with-default-solver
-    (parameterize ([core:bvmul-proc bvmul-uf]
-                  [core:bvudiv-proc bvudiv-uf]
-                  [core:bvurem-proc bvurem-uf])
-      (verify-jit-refinement
-        code
-        #:target-cpu-pc riscv:cpu-pc
-        #:target-insn-size (bv 4 64)
-        #:target-bitwidth 64
-        #:init-cpu init-rv64-cpu
-        #:equiv cpu-equal?
-        #:run-code run-jitted-code
-        #:run-jit emit_insn
-        #:max-insn (bv #x1000000 32)
-        #:max-target-size (bv #x8000000 32)))))
+  (parameterize
+    ([solver-logic 'QF_UFBV]
+     [core:bvmul-proc bvmul-uf]
+     [core:bvudiv-proc bvudiv-uf]
+     [core:bvurem-proc bvurem-uf]
+     [max-insn (bv #x1000000 32)])
+    (with-default-solver
+      (check-verify
+        (bpf-jit-specification
+          code
+          rv64-target)))))
 
 (define-syntax-rule (jit-verify-case code)
   (test-case+ (format "VERIFY ~s" code) (check-jit code)))

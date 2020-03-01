@@ -37,7 +37,9 @@
   ))
 
 (define (bpf2rv32 r)
-  (vector-ref regmap r))
+  (if (integer? r)
+    (vector-ref regmap r)
+    (vector-ref regmap (bpf:reg-idx r))))
 
 (define (hi x) (car x))
 (define (lo x) (cdr x))
@@ -297,11 +299,17 @@
       (emit (rv_addi (hi rd) (hi rs) 0) ctx)]
 
     [(BPF_ADD)
-      (emit (rv_addi RV_REG_T0 (lo rd) 0) ctx)
-      (emit (rv_add (lo rd) (lo rd) (lo rs)) ctx)
-      (emit (rv_sltu RV_REG_T0 (lo rd) RV_REG_T0) ctx)
-      (emit (rv_add (hi rd) (hi rd) (hi rs)) ctx)
-      (emit (rv_add (hi rd) (hi rd) RV_REG_T0) ctx)]
+      (cond
+        [(equal? rd rs)
+          (emit (rv_srli RV_REG_T0 (lo rd) (bv 31 32)) ctx)
+          (emit (rv_slli (hi rd) (hi rd) 1) ctx)
+          (emit (rv_or (hi rd) RV_REG_T0 (hi rd)) ctx)
+          (emit (rv_slli (lo rd) (lo rd) 1) ctx)]
+        [else
+          (emit (rv_add (lo rd) (lo rd) (lo rs)) ctx)
+          (emit (rv_sltu RV_REG_T0 (lo rd) (lo rs)) ctx)
+          (emit (rv_add (hi rd) (hi rd) (hi rs)) ctx)
+          (emit (rv_add (hi rd) (hi rd) RV_REG_T0) ctx)])]
 
     [(BPF_SUB)
       (emit (rv_sub RV_REG_T1 (hi rd) (hi rs)) ctx)
@@ -475,7 +483,7 @@
       (emit (rv_ble rd rs off) ctx)]
     [(BPF_JSET)
       (emit (rv_and RV_REG_T0 rd rs) ctx)
-      (emit (rv_beq RV_REG_T0 RV_REG_ZERO 6) ctx)])
+      (emit (rv_beq RV_REG_T0 RV_REG_ZERO off) ctx)])
 
     (when far
       (define e (context-ninsns ctx))
@@ -507,8 +515,8 @@
   (define rs1 (riscv_bpf_get_reg64 src1 tmp1 ctx))
   (define rs2 (riscv_bpf_get_reg64 src2 tmp2 ctx))
 
-  (define (NO_JUMP n) (+ 6 (* 2 n)))
-  (define (JUMP n) (+ 2 (* 2 n)))
+  (define (NO_JUMP idx) (+ 6 (* 2 idx)))
+  (define (JUMP idx) (+ 2 (* 2 idx)))
 
   (switch op #:id SWITCH_emit_rv32_branch_r64
 

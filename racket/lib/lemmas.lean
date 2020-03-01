@@ -1,5 +1,13 @@
--- theorems for axiomatization:
+-- Theorems for axiomatization:
 -- bvmul_comm, bvmulhu_comm, bvmul_decomp
+--
+-- The theorems prove that both bvmul and bvmulhu are commutative,
+-- and that 64-bit bvmul can be decomposed into 32-bit operations.
+-- They are used by spec.rkt to replace bitvector primitives with
+-- uninterpreted functions.
+--
+-- One can check the proofs using the Lean theorem prover 3.x:
+-- https://leanprover.github.io
 
 
 namespace nat

@@ -11,123 +11,28 @@
   rosette/lib/synthax
   rosette/lib/angelic
   "../lib/bpf-common.rkt"
-  "../lib/solver.rkt"
+  "../lib/riscv-common.rkt"
+  serval/lib/solver
+  "../lib/rvsynth.rkt"
   "spec.rkt")
 
 (provide (all-defined-out))
 
-; A JIT compiler is a vector of instruction templates
-(struct instr-template (op rd rs1 rs2 imm) #:transparent)
+(define rv32-src-regs '(tmp tmp2 zero hisrc losrc hidst lodst))
 
-; Choose register to operate on
-(define (choose-reg)
-  (choose*
-    'tmp ; A temporary register
-    'tmp2 ; another tmp register
-    'zero ; The RISC-V x0 register
-    'hisrc ; High bits of source
-    'losrc ; Low bits of source
-    'hidst ; High bits of destination
-    'lodst ; Low bits of destination
-  ))
+(define rv32-dst-regs '(tmp tmp2 hidst lodst))
 
-; Choose an immediate
-(define (choose-imm)
-  (define-symbolic* imm12 (bitvector 12))
-    imm12 ; a fresh 12-bit int
-  )
-
-; Choose an instruction
-(define (choose-instr)
-  (instr-template
-    (choose* 'add 'addi 'sub 'sll 'slli 'srl 'srli 'sra 'srai 'or 'ori 'and 'andi 'xor 'xori 'slt 'sltu) ; op
-    (choose* 'tmp 'tmp2 'hidst 'lodst) ; rd
-    (choose-reg) ; rs1
-    (choose-reg) ; rs2
-    (choose-imm) ; imm
-  ))
-
-; Interpret an immediate
-; NB: immediates are literals for now so nothing to do.
-(define (interpret-imm imm-template imm)
-  (cond
-    [#t imm-template]))
-
-; Register mappping
 (define regmap '((s2 . s1) (a1 . a0)))
 
-; Interpret a register template, given a concrete source and destination register.
-(define (interpret-reg reg-template dst src)
+(define (rv32-interpret-reg reg-template dst src)
   (case reg-template
     [(zero) 'zero]
     [(tmp) 't0]
     [(tmp2) 't1]
-    [(hidst) (car (list-ref regmap dst))]
-    [(lodst) (cdr (list-ref regmap dst))]
-    [(hisrc) (car (list-ref regmap src))]
-    [(losrc) (cdr (list-ref regmap src))]))
-
-; Interpret a RISC-V instruction template into a concrete
-; instruction given the dst, src, and imm parameters of the
-; BPF instruction.
-(define (interpret-instr template dst src imm)
-  (riscv:instr
-    (instr-template-op template)
-    (interpret-reg (instr-template-rd template) dst src)
-    (interpret-reg (instr-template-rs1 template) dst src)
-    (interpret-reg (instr-template-rs2 template) dst src)
-    (interpret-imm (instr-template-imm template) imm)
-    4))
-
-; Takes a BPF instruction class and yields a JIT for that
-; class to RV32.
-(define (synthesize-op op #:size size)
-
-  (printf "Synthesizing for op ~v with size ~v\n" op size)
-
-  ; Make a JIT of length "size"
-  (define jit (vector-map (lambda (i) (choose-instr)) (list->vector (range size))))
-
-  (define (run-jit insn code dst src off imm ctx)
-    ; For each instruction in our JIT template,
-    ; interpret it and then emit it.
-    (for ([i jit])
-      (emit (interpret-instr i dst src imm) ctx))
-    (context-insns ctx))
-
-  ; "assert-jit-correct" will fill s with symbolics it defines,
-  ; this hack lets us use them in the #:forall argument to
-  ; synthesize
-  (define s null)
-
-  ; Get JIT correctness definition.
-  (define asserted (with-asserts-only
-    (assert-jit-correct
-      op
-      #:target-bitwidth 32
-      #:target-insn-size (bv 4 32)
-      #:equiv cpu-equal?
-      #:run-jit run-jit
-      #:run-code run-jitted-code
-      #:init-cpu init-rv32-cpu
-      #:max-insn (bv #x100000 32)
-      #:max-target-size (bv #x800000 32)
-      #:target-cpu-pc riscv:cpu-pc
-      #:synthesis #t
-      #:add-symbolics (lambda (n) (set! s (append s n)))
-      #:assumptions (thunk null))))
-
-  ; Sanity check
-  (check-equal? (asserts) null)
-
-  (define sol
-    (synthesize
-    #:forall s
-    #:guarantee (assert (apply && asserted))))
-
-  (if (sat? sol)
-    (evaluate jit (complete-solution sol (symbolics jit)))
-    #f))
+    [(hidst) (car (list-ref regmap (bpf:reg-idx dst)))]
+    [(lodst) (cdr (list-ref regmap (bpf:reg-idx dst)))]
+    [(hisrc) (car (list-ref regmap (bpf:reg-idx src)))]
+    [(losrc) (cdr (list-ref regmap (bpf:reg-idx src)))]))
 
 (define (render-reg r)
   (case r
@@ -142,18 +47,25 @@
 (define (render-immediate immediate)
   (format "0x~x" (bitvector->natural immediate)))
 
-(define (render-instr i)
-  (define op (instr-template-op i))
-  (define rd (render-reg (instr-template-rd i)))
-  (define rs1 (render-reg (instr-template-rs1 i)))
-  (define rs2 (render-reg (instr-template-rs2 i)))
-  (define imm (render-immediate (instr-template-imm i)))
-  (case (instr-template-op i)
-    [(addi slli srli srai andi ori xori) (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op rd rs1 imm)]
-    [(add sub sll srl sra and or xor) (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op rd rs1 rs2)]
-    [(sltu slt) (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op rd rs1 rs2)]
+(define (render-instr template)
+  (cond
+    [(riscv:rv_r_insn? template)
+      (define op (riscv:rv_r_insn-op template))
+      (define rd (riscv:rv_r_insn-rd template))
+      (define rs1 (riscv:rv_r_insn-rs1 template))
+      (define rs2 (riscv:rv_r_insn-rs2 template))
 
-    [else (assert #f (format "Unknown instruction to render: ~v" (instr-template-op i)))]))
+      (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op (render-reg rd) (render-reg rs1) (render-reg rs2))]
+
+    [(riscv:rv_i_insn? template)
+      (define op (riscv:rv_i_insn-op template))
+      (define rd (riscv:rv_i_insn-rd template))
+      (define rs1 (riscv:rv_i_insn-rs1 template))
+      (define imm (riscv:rv_i_insn-imm12 template))
+
+      (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op (render-reg rd) (render-reg rs1) (render-immediate imm))]
+
+    [else (assert #f (format "Don't know how to render ~v" template))]))
 
 (define (render-jit jit)
   (define instrs (string-join (map render-instr (vector->list jit)) "\n" #:after-last "\n"))
@@ -162,7 +74,7 @@
 (define (synth-jit-loop op #:maxsize maxsize)
   (let/ec k
     (for ([size (in-range maxsize)])
-      (define j (synthesize-op op #:size size))
+      (define j (synthesize-op op #:size size #:target rv32-target))
       (when j (k j)))
     #f))
 
@@ -181,10 +93,9 @@
         (parameterize
           ([riscv:XLEN 32]
             [current-bitwidth #f]
+            [dst-regs rv32-dst-regs]
+            [src-regs rv32-src-regs]
+            [interpret-reg rv32-interpret-reg]
             [core:target-endian 'little]
-            [core:target-pointer-bitwidth 32]
-            [core:bvmul-proc bvmul-uf]
-            [core:bvudiv-proc bvudiv-uf]
-            [core:bvurem-proc bvurem-uf]
-            [riscv:bvmulhu-proc bvmulhu-uf])
+            [core:target-pointer-bitwidth 32])
           (synth-and-print code))))))

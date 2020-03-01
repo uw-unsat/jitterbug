@@ -42,6 +42,9 @@ specification and other common BPF functionality.
 `racket/lib/riscv-common.rkt` provides features specific
 to the JIT for the RISC-V ISA.
 
+`racket/lib/lemmas.lean` contains the axiomatization of bitvector
+operations in Lean.
+
 `racket/rv64/bpf_jit_riscv64.rkt` is a manual translation
 of the C implementation into Racket for verification.
 
@@ -57,9 +60,6 @@ to generate the final C implementation.
 
 `racket/rv32/spec.rkt` contains the specification of the BPF JIT
 for rv32.
-
-`racket/rv32/lemmas.lean` contains the axiomatization of bitvector
-operations in Lean.
 
 `racket/rv32/synthesis.rkt` contains the synthesis infrastructure
 and sketch for the BPF JIT for rv32.

@@ -1,178 +1,196 @@
 #lang rosette
 
 (require (prefix-in riscv: serval/riscv/interp))
+(require serval/lib/debug)
 
 (provide (all-defined-out))
 
 ; Size of RISC-V instruction, in bytes
 (define DEFAULT_SIZE 4)
 
-(define (rv_r_insn rs2 rs1 rd opcode)
-  (riscv:instr opcode rd rs1 rs2 #f DEFAULT_SIZE))
+(struct context (insns ninsns offset flags) #:mutable #:transparent)
 
-(define (rv_i_insn imm11_0 rs1 rd opcode)
-  (riscv:instr opcode rd rs1 #f (if (integer? imm11_0) (bv imm11_0 12) (extract 11 0 imm11_0)) DEFAULT_SIZE))
+(define (get-offset ctx idx)
+  (bug-assert (bvsge idx (bv 0 32)) #:msg "offset arg must be in bounds")
+  ((context-offset ctx) idx))
 
-(define (rv_u_insn imm31_12 rd opcode)
-  (riscv:instr opcode rd #f #f (extract 19 0 imm31_12) DEFAULT_SIZE))
+(define (code-size vec)
+  (* 4 (vector-length vec)))
 
-(define (rv_s_insn imm11_0 rs2 rs1 opcode)
-  (riscv:instr opcode #f rs1 rs2 (if (integer? imm11_0) (bv imm11_0 12) (extract 11 0 imm11_0)) DEFAULT_SIZE))
+(define (emit insn ctx)
+  (for/all ([insns (context-insns ctx) #:exhaustive])
+    (set-context-insns! ctx (vector-append insns (vector insn))))
+  (set-context-ninsns! ctx (bvadd (bv 1 32) (context-ninsns ctx))))
 
-(define (make-offset-imm x size)
+(define (init-ctx)
+  (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
+  (define-symbolic* seen boolean? [32])
+  (define-symbolic* ninsns (bitvector 32))
+  (define ctx (context (vector) ninsns offsets (list->vector seen)))
+  ctx)
+
+(define (bpf-to-target-pc ctx target-pc-base bpf-pc)
+  (define offsets (context-offset ctx))
+  (define (prev-offset insn)
+   (if (bveq insn (bv 0 32)) (bv 0 32) (offsets (bvsub insn (bv 1 32)))))
+  (bvadd
+    target-pc-base
+    (bvmul (zero-extend (prev-offset bpf-pc) (bitvector (riscv:XLEN))) (bv 4 (riscv:XLEN)))))
+
+(define (make-immediate x size)
   (cond
     [(integer? x) (bv x size)]
-    [#t (extract (- size 1) 0 x)]))
+    [else (extract (- size 1) 0 x)]))
 
 (define (rv_auipc rd imm)
-  (rv_u_insn imm rd 'auipc))
+  (riscv:rv_u_insn 'auipc rd (make-immediate imm 20)))
 
 (define (rv_jalr rd rs1 imm)
-  (rv_i_insn imm rs1 rd 'jalr))
+  (riscv:rv_i_insn 'jalr rd rs1 (make-immediate imm 12)))
 
 (define (rv_bne rs1 rs2 offset)
-  (riscv:instr 'bne #f rs1 rs2 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'bne rs1 rs2 (make-immediate offset 12)))
 
 (define (rv_beq rs1 rs2 offset)
-  (riscv:instr 'beq #f rs1 rs2 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'beq rs1 rs2 (make-immediate offset 12)))
 
 
 (define (rv_blt rs1 rs2 offset)
-  (riscv:instr 'blt #f rs1 rs2 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'blt rs1 rs2 (make-immediate offset 12)))
 
 (define (rv_bgt rs1 rs2 offset)
-  (riscv:instr 'blt #f rs2 rs1 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'blt rs2 rs1 (make-immediate offset 12)))
 
 
 (define (rv_bltu rs1 rs2 offset)
-  (riscv:instr 'bltu #f rs1 rs2 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'bltu rs1 rs2 (make-immediate offset 12)))
 
 (define (rv_bgtu rs1 rs2 offset)
-  (riscv:instr 'bltu #f rs2 rs1 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'bltu rs2 rs1 (make-immediate offset 12)))
 
 
 (define (rv_bgeu rs1 rs2 offset)
-  (riscv:instr 'bgeu #f rs1 rs2 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'bgeu rs1 rs2 (make-immediate offset 12)))
 
 (define (rv_bleu rs1 rs2 offset)
-  (riscv:instr 'bgeu #f rs2 rs1 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'bgeu rs2 rs1 (make-immediate offset 12)))
 
 
 (define (rv_bge rs1 rs2 offset)
-  (riscv:instr 'bge #f rs1 rs2 (make-offset-imm offset 12) DEFAULT_SIZE))
+  (riscv:rv_s_insn 'bge rs1 rs2 (make-immediate offset 12)))
 
 (define (rv_ble rs1 rs2 offset)
-  (riscv:instr 'bge #f rs2 rs1 (make-offset-imm offset 12) DEFAULT_SIZE))
-
+  (riscv:rv_s_insn 'bge rs2 rs1 (make-immediate offset 12)))
 
 
 (define (rv_jal dst offset)
-  (riscv:instr 'jal dst #f #f (make-offset-imm offset 20) DEFAULT_SIZE))
+  (riscv:rv_u_insn 'jal dst (make-immediate offset 20)))
 
 (define (rv_addiw rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'addiw))
+  (riscv:rv_i_insn 'addiw rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_addi rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'addi))
+  (riscv:rv_i_insn 'addi rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_sltu rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'sltu))
+  (riscv:rv_r_insn 'sltu rd rs1 rs2))
 
 (define (rv_addw rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'addw))
+  (riscv:rv_r_insn 'addw rd rs1 rs2))
 
 (define (rv_add rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'add))
+  (riscv:rv_r_insn 'add rd rs1 rs2))
 
 (define (rv_subw rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'subw))
+  (riscv:rv_r_insn 'subw rd rs1 rs2))
 
 (define (rv_sub rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'sub))
+  (riscv:rv_r_insn 'sub rd rs1 rs2))
 
 (define (rv_and rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'and))
+  (riscv:rv_r_insn 'and rd rs1 rs2))
 
 (define (rv_or rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'or))
+  (riscv:rv_r_insn 'or rd rs1 rs2))
 
 (define (rv_xor rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'xor))
+  (riscv:rv_r_insn 'xor rd rs1 rs2))
 
 (define (rv_mulw rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'mulw))
+  (riscv:rv_r_insn 'mulw rd rs1 rs2))
 
 (define (rv_mulhu rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'mulhu))
+  (riscv:rv_r_insn 'mulhu rd rs1 rs2))
 
 (define (rv_mul rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'mul))
+  (riscv:rv_r_insn 'mul rd rs1 rs2))
 
 (define (rv_divuw rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'divuw))
+  (riscv:rv_r_insn 'divuw rd rs1 rs2))
 
 (define (rv_divu rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'divu))
+  (riscv:rv_r_insn 'divu rd rs1 rs2))
 
 (define (rv_remuw rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'remuw))
+  (riscv:rv_r_insn 'remuw rd rs1 rs2))
 
 (define (rv_remu rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'remu))
+  (riscv:rv_r_insn 'remu rd rs1 rs2))
 
 (define (rv_sllw rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'sllw))
+  (riscv:rv_r_insn 'sllw rd rs1 rs2))
 
 (define (rv_sll rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'sll))
+  (riscv:rv_r_insn 'sll rd rs1 rs2))
 
 (define (rv_srlw rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'srlw))
+  (riscv:rv_r_insn 'srlw rd rs1 rs2))
 
 (define (rv_srl rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'srl))
+  (riscv:rv_r_insn 'srl rd rs1 rs2))
 
 (define (rv_sraw rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'sraw))
+  (riscv:rv_r_insn 'sraw rd rs1 rs2))
 
 (define (rv_sra rd rs1 rs2)
-  (rv_r_insn rs2 rs1 rd 'sra))
+  (riscv:rv_r_insn 'sra rd rs1 rs2))
 
 (define (rv_lui rd imm31_12)
-  (rv_u_insn imm31_12 rd 'lui))
+  (riscv:rv_u_insn 'lui rd (if (integer? imm31_12) (bv imm31_12 20) (extract 19 0 imm31_12))))
 
 (define (rv_slli rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'slli))
+  (riscv:rv_i_insn 'slli rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_andi rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'andi))
+  (riscv:rv_i_insn 'andi rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_ori rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'ori))
+  (riscv:rv_i_insn 'ori rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_xori rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'xori))
+  (riscv:rv_i_insn 'xori rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_slliw rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'slliw))
+  (riscv:rv_i_insn 'slliw rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_srliw rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'srliw))
+  (riscv:rv_i_insn 'srliw rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_srli rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'srli))
+  (riscv:rv_i_insn 'srli rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_sraiw rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'sraiw))
+  (riscv:rv_i_insn 'sraiw rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_srai rd rs1 imm11_0)
-  (rv_i_insn imm11_0 rs1 rd 'srai))
+  (riscv:rv_i_insn 'srai rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_lw rd imm11_0 rs1)
-  (rv_i_insn imm11_0 rs1 rd 'lw))
+  (riscv:rv_i_insn 'lw rd rs1 (make-immediate imm11_0 12)))
 
 (define (rv_sw rs1 imm11_0 rs2)
-  (rv_s_insn imm11_0 rs2 rs1 'sw))
+  (riscv:rv_s_insn 'sw rs1 rs2 (make-immediate imm11_0 12)))
+
 
 (define (is_12b_int imm)
   (&& (bvsle (bv (- #x800) 32) imm) (bvslt imm (bv #x800 32))))

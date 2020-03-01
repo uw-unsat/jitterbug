@@ -7,9 +7,9 @@
   (test-suite+
     "riscv32-alu64-x synthesis"
 
-    ; (jit-synthesize-case '(BPF_ALU64 BPF_MOV BPF_X))
+    (jit-synthesize-case '(BPF_ALU64 BPF_MOV BPF_X))
     ; (jit-synthesize-case '(BPF_ALU64 BPF_ADD BPF_X))
-    (jit-synthesize-case '(BPF_ALU64 BPF_SUB BPF_X))
+    ; (jit-synthesize-case '(BPF_ALU64 BPF_SUB BPF_X))
     ; (jit-synthesize-case '(BPF_ALU64 BPF_AND BPF_X))
     ; (jit-synthesize-case '(BPF_ALU64 BPF_OR BPF_X))
     ; (jit-synthesize-case '(BPF_ALU64 BPF_XOR BPF_X))
