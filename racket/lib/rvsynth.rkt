@@ -25,55 +25,40 @@
   (define-symbolic* imm12 (bitvector 12))
   imm12)
 
-(define (choose-insn)
+(struct insn-template (op rd rs1 rs2 imm) #:transparent)
 
-  (define rv_r_ops '(add sub sll srl sra or and xor slt sltu))
-  (when (= (riscv:XLEN) 64)
-    (set! rv_r_ops (append rv_r_ops '(addw subw sllw srlw))))
-
-  (choose*
-    (riscv:rv_r_insn
-      (apply choose* rv_r_ops)
-      (apply choose* (dst-regs))
-      (apply choose* (src-regs))
-      (apply choose* (src-regs)))
-
-    (riscv:rv_i_insn
-      (choose* 'addi 'slli 'srli 'srai 'ori 'andi 'xori)
-      (apply choose* (dst-regs))
-      (apply choose* (src-regs))
-      (choose-imm))
-  ))
-
-
-(define (interpret-imm imm-template bpf-imm)
-  imm-template)
-
-
-(define (interpret-insn insn-template bpf-dst bpf-src bpf-imm)
-  (cond
-
-    [(riscv:rv_r_insn? insn-template)
-      (define op (riscv:rv_r_insn-op insn-template))
-      (define rd (riscv:rv_r_insn-rd insn-template))
-      (define rs1 (riscv:rv_r_insn-rs1 insn-template))
-      (define rs2 (riscv:rv_r_insn-rs2 insn-template))
-
+(define (make-insn insn-template bpf-dst bpf-src bpf-imm)
+  (define op (insn-template-op insn-template))
+  (define rd (insn-template-rd insn-template))
+  (define rs1 (insn-template-rs1 insn-template))
+  (define rs2 (insn-template-rs2 insn-template))
+  (define imm (insn-template-imm insn-template))
+  (case op
+    [(add sub sll srl sra or and xor slt sltu addw subw sllw srlw)
       (riscv:rv_r_insn op
         ((interpret-reg) rd bpf-dst bpf-src)
         ((interpret-reg) rs1 bpf-dst bpf-src)
         ((interpret-reg) rs2 bpf-dst bpf-src))]
-
-    [(riscv:rv_i_insn? insn-template)
-      (define op (riscv:rv_i_insn-op insn-template))
-      (define rd (riscv:rv_i_insn-rd insn-template))
-      (define rs1 (riscv:rv_i_insn-rs1 insn-template))
-      (define imm12 (riscv:rv_i_insn-imm12 insn-template))
-
+    [else
       (riscv:rv_i_insn op
         ((interpret-reg) rd bpf-dst bpf-src)
         ((interpret-reg) rs1 bpf-dst bpf-src)
-        (interpret-imm imm12 bpf-imm))]))
+        (interpret-imm imm bpf-imm))]))
+
+(define (choose-insn)
+  (define rv_ops '(add addi sub sll slli srl srli sra or and xor sltu))
+  (when (= (riscv:XLEN) 64)
+    (set! rv_ops (append rv_ops '(addw subw sllw srlw))))
+
+  (insn-template
+    (apply choose* rv_ops)
+    (apply choose* (dst-regs))
+    (apply choose* (src-regs))
+    (apply choose* (src-regs))
+    (choose-imm)))
+
+(define (interpret-imm imm-template bpf-imm)
+  imm-template)
 
 
 (define (synthesize-op op #:size size #:target target)
@@ -87,7 +72,7 @@
     ; For each instruction in our JIT template,
     ; interpret it and then emit it.
     (for ([i jit])
-      (emit (interpret-insn i bpf-dst bpf-src bpf-imm) ctx))
+      (emit (make-insn i bpf-dst bpf-src bpf-imm) ctx))
     (context-insns ctx))
 
   ; "bpf-jit-specification" will fill s with symbolics it defines,

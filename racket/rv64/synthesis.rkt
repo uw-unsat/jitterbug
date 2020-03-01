@@ -48,24 +48,17 @@
   (format "0x~x" (bitvector->natural immediate)))
 
 (define (render-instr template)
-  (cond
-    [(riscv:rv_r_insn? template)
-      (define op (riscv:rv_r_insn-op template))
-      (define rd (riscv:rv_r_insn-rd template))
-      (define rs1 (riscv:rv_r_insn-rs1 template))
-      (define rs2 (riscv:rv_r_insn-rs2 template))
+  (define op (insn-template-op template))
+  (define rd (render-reg (insn-template-rd template)))
+  (define rs1 (render-reg (insn-template-rs1 template)))
+  (define rs2 (render-reg (insn-template-rs2 template)))
+  (define imm (render-immediate (insn-template-imm template)))
 
-      (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op (render-reg rd) (render-reg rs1) (render-reg rs2))]
-
-    [(riscv:rv_i_insn? template)
-      (define op (riscv:rv_i_insn-op template))
-      (define rd (riscv:rv_i_insn-rd template))
-      (define rs1 (riscv:rv_i_insn-rs1 template))
-      (define imm (riscv:rv_i_insn-imm12 template))
-
-      (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op (render-reg rd) (render-reg rs1) (render-immediate imm))]
-
-    [else (assert #f (format "Don't know how to render ~v" template))]))
+  (case op
+    [(add sub sll srl sra or and xor slt slt addw subw sllw srlw)
+      (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op rd rs1 rs2)]
+    [else
+      (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op rd rs1 imm)]))
 
 
 (define (render-jit jit)

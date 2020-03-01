@@ -49,10 +49,10 @@ enum {
 
 struct rv_jit_context {
 	struct bpf_prog *prog;
-	u32 *insns; /* RV insns */
+	u32 *insns;		/* RV insns */
 	int ninsns;
 	int epilogue_offset;
-	int *offset; /* BPF to RV */
+	int *offset;		/* BPF to RV */
 	unsigned long flags;
 	int stack_size;
 };
@@ -98,7 +98,7 @@ static inline int rv_offset(int insn, int off, struct rv_jit_context *ctx)
 	return (to - from) << 2;
 }
 
-/* return -1 or inverted cond */
+/* Return -1 or inverted cond. */
 static inline int invert_bpf_cond(u8 cond)
 {
 	switch (cond) {
@@ -125,6 +125,8 @@ static inline int invert_bpf_cond(u8 cond)
 	}
 	return -1;
 }
+
+/* Instruction formats. */
 
 static inline u32 rv_r_insn(u8 funct7, u8 rs2, u8 rs1, u8 funct3, u8 rd,
 			    u8 opcode)
@@ -178,6 +180,8 @@ static inline u32 rv_amo_insn(u8 funct5, u8 aq, u8 rl, u8 rs2, u8 rs1,
 
 	return rv_r_insn(funct7, rs2, rs1, funct3, rd, opcode);
 }
+
+/* Instructions shared by both RV32 and RV64. */
 
 static inline u32 rv_add(u8 rd, u8 rs1, u8 rs2)
 {
