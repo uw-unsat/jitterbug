@@ -55,7 +55,7 @@
   (define imm (render-immediate (insn-template-imm template)))
 
   (case op
-    [(add sub sll srl sra or and xor slt slt)
+    [(add sub sll srl sra or and xor slt slt sltu)
       (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op rd rs1 rs2)]
     [else
       (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op rd rs1 imm)]))
