@@ -24,9 +24,9 @@
 
 (define (init-ctx)
   (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
-  (define-symbolic* seen boolean? [32])
+  (define-symbolic* seen (~> (bitvector 5) boolean?))
   (define-symbolic* ninsns (bitvector 32))
-  (define ctx (context (vector) ninsns offsets (list->vector seen)))
+  (define ctx (context (vector) ninsns offsets seen))
   ctx)
 
 (define (bpf-to-target-pc ctx target-pc-base bpf-pc)

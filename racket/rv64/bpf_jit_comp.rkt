@@ -23,16 +23,17 @@
     (list RV_CTX_F_SEEN_S1 RV_CTX_F_SEEN_S2
           RV_CTX_F_SEEN_S3 RV_CTX_F_SEEN_S4
           RV_CTX_F_SEEN_S5 RV_CTX_F_SEEN_S6))
-    (vector-set! (context-flags ctx) (riscv:gpr->idx reg) #t))
+    (set-context-flags! ctx (core:update (context-flags ctx) (list (riscv:gpr->idx reg)) #t)))
   reg)
 
 (define (seen_reg reg ctx)
+  (define flags (context-flags ctx))
   (if (member reg
     (list RV_CTX_F_SEEN_CALL
           RV_CTX_F_SEEN_S1 RV_CTX_F_SEEN_S2
           RV_CTX_F_SEEN_S3 RV_CTX_F_SEEN_S4
           RV_CTX_F_SEEN_S5 RV_CTX_F_SEEN_S6))
-    (vector-ref (context-flags ctx) (riscv:gpr->idx reg))
+    (flags (riscv:gpr->idx reg))
     #f))
 
 (define (emit_imm rd val ctx)

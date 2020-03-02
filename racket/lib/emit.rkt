@@ -55,10 +55,13 @@
            [(bvsgt bvugt) (apply format "~a > ~a" (map fmt args))]
            [(bvslt bvult) (apply format "~a < ~a" (map fmt args))]
            [(bvsub) (apply format "~a - ~a" (map fmt args))]
+           [(bvor) (apply format "~a | ~a" (map fmt args))]
            [(comment) (syntax-e (car args))]
            [(cond) (fmt-cond args)]
            [(equal?) (apply format "~a == ~a" (map fmt args))]
            [(when) (apply fmt-when args)]
+           [(0x) (let ([stx (cadr e)])
+                   (string-append "0x" (~a (fmt stx) #:align 'right #:width (syntax-span stx) #:pad-string "0")))]
            [else (format "~a(~a)" op
                          (string-join (map (lambda (v) (format "~a" (fmt v))) args) ", "))]))]
       [else (format "TODO: ~a" e)]))
@@ -110,3 +113,36 @@
         (case expr
           [(val) handler ...]
           ...)))]))
+
+(define-syntax (0x stx)
+  (syntax-case stx ()
+    [(_ arg)
+     (syntax/loc stx
+       (string->number (~a (syntax->datum #'arg)) 16))]))
+
+(define-syntax (define-rvenc stx)
+  (syntax-case stx ()
+    [(_ (id args ...) expr)
+      (let ([port (emit-port)])
+        (when port
+          (define (fmt-arg x)
+            (define s (~a (syntax->datum x)))
+            (define lst (regexp-match #px"imm(\\d+)_(\\d+)" s))
+            (match lst
+              [(list _ hi lo)
+               (let ([n (- (add1 (string->number hi)) (string->number lo))])
+                 (define size
+                   (cond
+                     [(> n 16) 32]
+                     [(> n 8) 16]
+                     [else 8]))
+                 (format "u~a ~a" size s))]
+              [_ (format "u8 ~a" s)]))
+          (emit-prologue #'id)
+          (fprintf port "static inline u32 ~a(~a)\n{\n\treturn ~a;\n}\n"
+            (syntax->datum #'id)
+            (string-join (map fmt-arg (syntax->list #'(args ...))) ", ")
+            (fmt #'expr))
+          (emit-epilogue))
+        (syntax/loc stx
+          (define (id args ...) expr)))]))
