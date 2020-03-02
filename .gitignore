@@ -1,3 +1,3 @@
+*.generated.rkt
 compiled/
 .DS_Store
-racket/rv32/bpf_jit_comp32.generated.rkt
