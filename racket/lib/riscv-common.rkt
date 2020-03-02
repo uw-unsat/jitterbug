@@ -185,11 +185,32 @@
 (define (rv_srai rd rs1 imm11_0)
   (riscv:rv_i_insn 'srai rd rs1 (make-immediate imm11_0 12)))
 
-(define (rv_lw rd imm11_0 rs1)
-  (riscv:rv_i_insn 'lw rd rs1 (make-immediate imm11_0 12)))
+(define (rv_sb rs1 imm11_0 rs2)
+  (riscv:rv_s_insn 'sb rs1 rs2 (make-immediate imm11_0 12)))
+
+(define (rv_sh rs1 imm11_0 rs2)
+  (riscv:rv_s_insn 'sh rs1 rs2 (make-immediate imm11_0 12)))
 
 (define (rv_sw rs1 imm11_0 rs2)
   (riscv:rv_s_insn 'sw rs1 rs2 (make-immediate imm11_0 12)))
+
+(define (rv_sd rs1 imm11_0 rs2)
+  (riscv:rv_s_insn 'sd rs1 rs2 (make-immediate imm11_0 12)))
+
+(define (rv_lbu rd imm11_0 rs1)
+  (riscv:rv_i_insn 'lbu rd rs1 (make-immediate imm11_0 12)))
+
+(define (rv_lhu rd imm11_0 rs1)
+  (riscv:rv_i_insn 'lhu rd rs1 (make-immediate imm11_0 12)))
+
+(define (rv_lw rd imm11_0 rs1)
+  (riscv:rv_i_insn 'lw rd rs1 (make-immediate imm11_0 12)))
+
+(define (rv_lwu rd imm11_0 rs1)
+  (riscv:rv_i_insn 'lwu rd rs1 (make-immediate imm11_0 12)))
+
+(define (rv_ld rd imm11_0 rs1)
+  (riscv:rv_i_insn 'ld rd rs1 (make-immediate imm11_0 12)))
 
 
 (define (is_12b_int imm)

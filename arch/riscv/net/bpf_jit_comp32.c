@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
-/* BPF JIT compiler for RV32G
+/*
+ * BPF JIT compiler for RV32G
  *
  * Copyright (c) 2020 Luke Nelson <luke.r.nels@gmail.com>
  * Copyright (c) 2020 Xi Wang <xi.wang@gmail.com>
@@ -48,7 +49,8 @@ static const s8 bpf2rv32[][2] = {
 	[BPF_REG_3] = {RV_REG_A5, RV_REG_A4},
 	[BPF_REG_4] = {RV_REG_A7, RV_REG_A6},
 	[BPF_REG_5] = {RV_REG_S4, RV_REG_S3},
-	/* Callee-saved registers that in-kernel function will preserve.
+	/*
+	 * Callee-saved registers that in-kernel function will preserve.
 	 * Stored on the stack.
 	 */
 	[BPF_REG_6] = {STACK_OFFSET(BPF_R6_HI), STACK_OFFSET(BPF_R6_LO)},
@@ -59,7 +61,8 @@ static const s8 bpf2rv32[][2] = {
 	[BPF_REG_FP] = {RV_REG_S6, RV_REG_S5},
 	/* Temporary register for blinding constants. Stored on the stack. */
 	[BPF_REG_AX] = {STACK_OFFSET(BPF_AX_HI), STACK_OFFSET(BPF_AX_LO)},
-	/* Temporary registers used by the JIT to operate on registers stored
+	/*
+	 * Temporary registers used by the JIT to operate on registers stored
 	 * on the stack. Save t0 and t1 to be used as temporaries in generated
 	 * code.
 	 */
@@ -136,7 +139,8 @@ static void __build_epilogue(bool is_tail_call, struct rv_jit_context *ctx)
 	emit(rv_addi(RV_REG_SP, RV_REG_SP, stack_adjust), ctx);
 
 	if (is_tail_call) {
-		/* goto *(t0 + 4);
+		/*
+		 * goto *(t0 + 4);
 		 * Skips first instruction of prologue which initializes tail
 		 * call counter. Assumes t0 contains address of target program,
 		 * see emit_bpf_tail_call.
@@ -546,7 +550,8 @@ static int emit_rv32_branch_r64(const s8 *src1, const s8 *src2, s32 rvoff,
 	const s8 *rs1 = rv32_bpf_get_reg64(src1, tmp1, ctx);
 	const s8 *rs2 = rv32_bpf_get_reg64(src2, tmp2, ctx);
 
-	/* NO_JUMP skips over the rest of the instructions and the
+	/*
+	 * NO_JUMP skips over the rest of the instructions and the
 	 * emit_jump_and_link, meaning the BPF branch is not taken.
 	 * JUMP skips directly to the emit_jump_and_link, meaning
 	 * the BPF branch is taken.
@@ -630,7 +635,8 @@ static int emit_bcc(u8 op, u8 rd, u8 rs, int rvoff, struct rv_jit_context *ctx)
 	int off;
 
 	if (op == BPF_JSET) {
-		/* BPF_JSET is a special case: it has no inverse so we always
+		/*
+		 * BPF_JSET is a special case: it has no inverse so we always
 		 * treat it as a far branch.
 		 */
 		far = true;
@@ -639,7 +645,8 @@ static int emit_bcc(u8 op, u8 rd, u8 rs, int rvoff, struct rv_jit_context *ctx)
 		far = true;
 	}
 
-	/* For a far branch, the condition is negated and we jump over the
+	/*
+	 * For a far branch, the condition is negated and we jump over the
 	 * branch itself, and the two instructions from emit_jump_and_link.
 	 * For a near branch, just use rvoff.
 	 */
@@ -726,7 +733,8 @@ static void emit_call(bool fixed, u64 addr, struct rv_jit_context *ctx)
 	/* Backup TCC. */
 	emit(rv_addi(RV_REG_TCC_SAVED, RV_REG_TCC, 0), ctx);
 
-	/* Use lui/jalr pair to jump to absolute address. Don't use emit_imm as
+	/*
+	 * Use lui/jalr pair to jump to absolute address. Don't use emit_imm as
 	 * the number of emitted instructions should not depend on the value of
 	 * addr.
 	 */
@@ -744,7 +752,8 @@ static void emit_call(bool fixed, u64 addr, struct rv_jit_context *ctx)
 
 static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 {
-	/* R1 -> &ctx
+	/*
+	 * R1 -> &ctx
 	 * R2 -> &array
 	 * R3 -> index
 	 */
@@ -761,20 +770,23 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 		return -1;
 	emit(rv_lw(RV_REG_T1, off, lo(arr_reg)), ctx);
 
-	/* if (index >= max_entries)
+	/*
+	 * if (index >= max_entries)
 	 *   goto out;
 	 */
 	off = (tc_ninsn - (ctx->ninsns - start_insn)) << 2;
 	emit_bcc(BPF_JGE, lo(idx_reg), RV_REG_T1, off, ctx);
 
-	/* if ((temp_tcc = tcc - 1) < 0)
+	/*
+	 * if ((temp_tcc = tcc - 1) < 0)
 	 *   goto out;
 	 */
 	emit(rv_addi(RV_REG_T1, RV_REG_TCC, -1), ctx);
 	off = (tc_ninsn - (ctx->ninsns - start_insn)) << 2;
 	emit_bcc(BPF_JSLT, RV_REG_T1, RV_REG_ZERO, off, ctx);
 
-	/* prog = array->ptrs[index];
+	/*
+	 * prog = array->ptrs[index];
 	 * if (!prog)
 	 *   goto out;
 	 */
@@ -787,7 +799,8 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	off = (tc_ninsn - (ctx->ninsns - start_insn)) << 2;
 	emit_bcc(BPF_JEQ, RV_REG_T0, RV_REG_ZERO, off, ctx);
 
-	/* tcc = temp_tcc;
+	/*
+	 * tcc = temp_tcc;
 	 * goto *(prog->bpf_func + 4);
 	 */
 	off = offsetof(struct bpf_prog, bpf_func);
@@ -1021,14 +1034,16 @@ static int emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
 	case BPF_ALU | BPF_LSH | BPF_K:
 	case BPF_ALU | BPF_RSH | BPF_K:
 	case BPF_ALU | BPF_ARSH | BPF_K:
-		/* mul,div,mod are handled in the BPF_X case since there are
+		/*
+		 * mul,div,mod are handled in the BPF_X case since there are
 		 * no RISC-V I-type equivalents.
 		 */
 		emit_rv32_alu_i32(dst, imm, ctx, BPF_OP(code));
 		break;
 
 	case BPF_ALU | BPF_NEG:
-		/* src is ignored---choose tmp2 as a dummy register since it
+		/*
+		 * src is ignored---choose tmp2 as a dummy register since it
 		 * is not on the stack.
 		 */
 		emit_rv32_alu_r32(dst, tmp2, ctx, BPF_OP(code));
@@ -1266,7 +1281,8 @@ static void build_prologue(struct rv_jit_context *ctx)
 
 	stack_adjust += 4 * BPF_JIT_SCRATCH_REGS;
 
-	/* The first instruction sets the tail-call-counter (TCC) register.
+	/*
+	 * The first instruction sets the tail-call-counter (TCC) register.
 	 * This instruction is skipped by tail calls.
 	 */
 	emit(rv_addi(RV_REG_TCC, RV_REG_ZERO, MAX_TAIL_CALL_CNT), ctx);
@@ -1309,7 +1325,8 @@ static int build_body(struct rv_jit_context *ctx, bool extra_pass, int *offset)
 
 		ret = emit_insn(insn, ctx, extra_pass);
 		if (ret > 0)
-			/* BPF_LD | BPF_IMM | BPF_DW:
+			/*
+			 * BPF_LD | BPF_IMM | BPF_DW:
 			 * Skip the next instruction.
 			 */
 			i++;
