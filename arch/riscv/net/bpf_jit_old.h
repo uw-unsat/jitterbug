@@ -207,8 +207,6 @@ static inline u32 rv_amo_insn(u8 funct5, u8 aq, u8 rl, u8 rs2, u8 rs1,
 	return rv_r_insn(funct7, rs2, rs1, funct3, rd, opcode);
 }
 
-/* Instructions shared by both RV32 and RV64. */
-
 static inline u32 rv_addi(u8 rd, u8 rs1, u16 imm11_0)
 {
 	return rv_i_insn(imm11_0, rs1, 0, rd, 0x13);
@@ -264,11 +262,6 @@ static inline u32 rv_sub(u8 rd, u8 rs1, u8 rs2)
 	return rv_r_insn(0x20, rs2, rs1, 0, rd, 0x33);
 }
 
-static inline u32 rv_sltu(u8 rd, u8 rs1, u8 rs2)
-{
-	return rv_r_insn(0, rs2, rs1, 3, rd, 0x33);
-}
-
 static inline u32 rv_and(u8 rd, u8 rs1, u8 rs2)
 {
 	return rv_r_insn(0, rs2, rs1, 7, rd, 0x33);
@@ -302,11 +295,6 @@ static inline u32 rv_sra(u8 rd, u8 rs1, u8 rs2)
 static inline u32 rv_mul(u8 rd, u8 rs1, u8 rs2)
 {
 	return rv_r_insn(1, rs2, rs1, 0, rd, 0x33);
-}
-
-static inline u32 rv_mulhu(u8 rd, u8 rs1, u8 rs2)
-{
-	return rv_r_insn(1, rs2, rs1, 3, rd, 0x33);
 }
 
 static inline u32 rv_divu(u8 rd, u8 rs1, u8 rs2)
@@ -344,19 +332,9 @@ static inline u32 rv_bltu(u8 rs1, u8 rs2, u16 imm12_1)
 	return rv_b_insn(imm12_1, rs2, rs1, 6, 0x63);
 }
 
-static inline u32 rv_bgtu(u8 rs1, u8 rs2, u16 imm12_1)
-{
-	return rv_bltu(rs2, rs1, imm12_1);
-}
-
 static inline u32 rv_bgeu(u8 rs1, u8 rs2, u16 imm12_1)
 {
 	return rv_b_insn(imm12_1, rs2, rs1, 7, 0x63);
-}
-
-static inline u32 rv_bleu(u8 rs1, u8 rs2, u16 imm12_1)
-{
-	return rv_bgeu(rs2, rs1, imm12_1);
 }
 
 static inline u32 rv_blt(u8 rs1, u8 rs2, u16 imm12_1)
@@ -364,24 +342,9 @@ static inline u32 rv_blt(u8 rs1, u8 rs2, u16 imm12_1)
 	return rv_b_insn(imm12_1, rs2, rs1, 4, 0x63);
 }
 
-static inline u32 rv_bgt(u8 rs1, u8 rs2, u16 imm12_1)
-{
-	return rv_blt(rs2, rs1, imm12_1);
-}
-
 static inline u32 rv_bge(u8 rs1, u8 rs2, u16 imm12_1)
 {
 	return rv_b_insn(imm12_1, rs2, rs1, 5, 0x63);
-}
-
-static inline u32 rv_ble(u8 rs1, u8 rs2, u16 imm12_1)
-{
-	return rv_bge(rs2, rs1, imm12_1);
-}
-
-static inline u32 rv_lw(u8 rd, u16 imm11_0, u8 rs1)
-{
-	return rv_i_insn(imm11_0, rs1, 2, rd, 0x03);
 }
 
 static inline u32 rv_lbu(u8 rd, u16 imm11_0, u8 rs1)
@@ -413,15 +376,6 @@ static inline u32 rv_amoadd_w(u8 rd, u8 rs2, u8 rs1, u8 aq, u8 rl)
 {
 	return rv_amo_insn(0, aq, rl, rs2, rs1, 2, rd, 0x2f);
 }
-
-/*
- * RV64-only instructions.
- *
- * These instructions are not available on RV32.  Wrap them below a #if to
- * ensure that the RV32 JIT doesn't emit any of these instructions.
- */
-
-#if __riscv_xlen == 64
 
 static inline u32 rv_addiw(u8 rd, u8 rs1, u16 imm11_0)
 {
@@ -502,8 +456,6 @@ static inline u32 rv_amoadd_d(u8 rd, u8 rs2, u8 rs1, u8 aq, u8 rl)
 {
 	return rv_amo_insn(0, aq, rl, rs2, rs1, 3, rd, 0x2f);
 }
-
-#endif /* __riscv_xlen == 64 */
 
 void bpf_jit_build_prologue(struct rv_jit_context *ctx);
 void bpf_jit_build_epilogue(struct rv_jit_context *ctx);

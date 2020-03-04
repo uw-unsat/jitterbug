@@ -6,7 +6,7 @@
 (define tests
   (test-suite+
     "riscv64-jump64-k tests"
-    (jit-verify-case '(BPF_JMP BPF_JA BPF_K))
+    (jit-verify-case '(BPF_JMP BPF_JA))
     (jit-verify-case '(BPF_JMP BPF_JSET BPF_K))
     (jit-verify-case '(BPF_JMP BPF_JEQ BPF_K))
     (jit-verify-case '(BPF_JMP BPF_JGT BPF_K))

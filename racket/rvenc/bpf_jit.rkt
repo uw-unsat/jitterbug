@@ -86,6 +86,9 @@
 (define-rvenc (rv_addi rd rs1 imm11_0)
   (rv_i_insn imm11_0 rs1 0 rd (0x 13)))
 
+(define-rvenc (rv_mv rd rs1)
+  (rv_addi rd rs1 (bv 0 12)))
+
 (define-rvenc (rv_sub rd rs1 rs2)
   (rv_r_insn (0x 20) rs2 rs1 0 rd (0x 33)))
 
@@ -159,13 +162,13 @@
   (rv_b_insn imm12_1 rs2 rs1 6 (0x 63)))
 
 (define-rvenc (rv_bgtu rs1 rs2 imm12_1)
-  (rv_b_insn imm12_1 rs1 rs2 6 (0x 63)))
+  (rv_bltu rs2 rs1 imm12_1))
 
 (define-rvenc (rv_bgeu rs1 rs2 imm12_1)
   (rv_b_insn imm12_1 rs2 rs1 7 (0x 63)))
 
 (define-rvenc (rv_bleu rs1 rs2 imm12_1)
-  (rv_b_insn imm12_1 rs1 rs2 7 (0x 63)))
+  (rv_bgeu rs2 rs1 imm12_1))
 
 (define-rvenc (rv_bne rs1 rs2 imm12_1)
   (rv_b_insn imm12_1 rs2 rs1 1 (0x 63)))
@@ -174,13 +177,13 @@
   (rv_b_insn imm12_1 rs2 rs1 4 (0x 63)))
 
 (define-rvenc (rv_bgt rs1 rs2 imm12_1)
-  (rv_b_insn imm12_1 rs1 rs2 4 (0x 63)))
+  (rv_blt rs2 rs1 imm12_1))
 
 (define-rvenc (rv_bge rs1 rs2 imm12_1)
   (rv_b_insn imm12_1 rs2 rs1 5 (0x 63)))
 
 (define-rvenc (rv_ble rs1 rs2 imm12_1)
-  (rv_b_insn imm12_1 rs1 rs2 5 (0x 63)))
+  (rv_bge rs2 rs1 imm12_1))
 
 (define-rvenc (rv_sb rs1 imm11_0 rs2)
   (rv_s_insn imm11_0 rs2 rs1 0 (0x 23)))

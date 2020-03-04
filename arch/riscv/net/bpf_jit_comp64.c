@@ -424,8 +424,8 @@ static int emit_call(bool fixed, u64 addr, struct rv_jit_context *ctx)
 	return 0;
 }
 
-static int emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
-		     bool extra_pass)
+int bpf_jit_emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
+		      bool extra_pass)
 {
 	bool is64 = BPF_CLASS(insn->code) == BPF_ALU64 ||
 		    BPF_CLASS(insn->code) == BPF_JMP;
@@ -1003,7 +1003,7 @@ out_be:
 	return 0;
 }
 
-static void build_prologue(struct rv_jit_context *ctx)
+void bpf_jit_build_prologue(struct rv_jit_context *ctx)
 {
 	int stack_adjust = 0, store_offset, bpf_stack_adjust;
 
@@ -1084,163 +1084,9 @@ static void build_prologue(struct rv_jit_context *ctx)
 	ctx->stack_size = stack_adjust;
 }
 
-static void build_epilogue(struct rv_jit_context *ctx)
+void bpf_jit_build_epilogue(struct rv_jit_context *ctx)
 {
 	__build_epilogue(false, ctx);
-}
-
-static int build_body(struct rv_jit_context *ctx, bool extra_pass, int *offset)
-{
-	const struct bpf_prog *prog = ctx->prog;
-	int i;
-
-	for (i = 0; i < prog->len; i++) {
-		const struct bpf_insn *insn = &prog->insnsi[i];
-		int ret;
-
-		ret = emit_insn(insn, ctx, extra_pass);
-		if (ret > 0) {
-			i++;
-			if (offset)
-				offset[i] = ctx->ninsns;
-			continue;
-		}
-		if (offset)
-			offset[i] = ctx->ninsns;
-		if (ret)
-			return ret;
-	}
-	return 0;
-}
-
-bool bpf_jit_needs_zext(void)
-{
-	return true;
-}
-
-struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
-{
-	bool tmp_blinded = false, extra_pass = false;
-	struct bpf_prog *tmp, *orig_prog = prog;
-	int pass = 0, prev_ninsns = 0, i;
-	struct rv_jit_data *jit_data;
-	unsigned int image_size = 0;
-	struct rv_jit_context *ctx;
-
-	if (!prog->jit_requested)
-		return orig_prog;
-
-	tmp = bpf_jit_blind_constants(prog);
-	if (IS_ERR(tmp))
-		return orig_prog;
-	if (tmp != prog) {
-		tmp_blinded = true;
-		prog = tmp;
-	}
-
-	jit_data = prog->aux->jit_data;
-	if (!jit_data) {
-		jit_data = kzalloc(sizeof(*jit_data), GFP_KERNEL);
-		if (!jit_data) {
-			prog = orig_prog;
-			goto out;
-		}
-		prog->aux->jit_data = jit_data;
-	}
-
-	ctx = &jit_data->ctx;
-
-	if (ctx->offset) {
-		extra_pass = true;
-		image_size = sizeof(u32) * ctx->ninsns;
-		goto skip_init_ctx;
-	}
-
-	ctx->prog = prog;
-	ctx->offset = kcalloc(prog->len, sizeof(int), GFP_KERNEL);
-	if (!ctx->offset) {
-		prog = orig_prog;
-		goto out_offset;
-	}
-	for (i = 0; i < prog->len; i++) {
-		prev_ninsns += 32;
-		ctx->offset[i] = prev_ninsns;
-	}
-
-	for (i = 0; i < 16; i++) {
-		pass++;
-		ctx->ninsns = 0;
-		if (build_body(ctx, extra_pass, ctx->offset)) {
-			prog = orig_prog;
-			goto out_offset;
-		}
-		build_prologue(ctx);
-		ctx->epilogue_offset = ctx->ninsns;
-		build_epilogue(ctx);
-
-		if (ctx->ninsns == prev_ninsns) {
-			if (jit_data->header)
-				break;
-
-			image_size = sizeof(u32) * ctx->ninsns;
-			jit_data->header =
-				bpf_jit_binary_alloc(image_size,
-						     &jit_data->image,
-						     sizeof(u32),
-						     bpf_fill_ill_insns);
-			if (!jit_data->header) {
-				prog = orig_prog;
-				goto out_offset;
-			}
-
-			ctx->insns = (u32 *)jit_data->image;
-			/* Now, when the image is allocated, the image
-			 * can potentially shrink more (auipc/jalr ->
-			 * jal).
-			 */
-		}
-		prev_ninsns = ctx->ninsns;
-	}
-
-	if (i == 16) {
-		pr_err("bpf-jit: image did not converge in <%d passes!\n", i);
-		bpf_jit_binary_free(jit_data->header);
-		prog = orig_prog;
-		goto out_offset;
-	}
-
-skip_init_ctx:
-	pass++;
-	ctx->ninsns = 0;
-
-	build_prologue(ctx);
-	if (build_body(ctx, extra_pass, NULL)) {
-		bpf_jit_binary_free(jit_data->header);
-		prog = orig_prog;
-		goto out_offset;
-	}
-	build_epilogue(ctx);
-
-	if (bpf_jit_enable > 1)
-		bpf_jit_dump(prog->len, image_size, pass, ctx->insns);
-
-	prog->bpf_func = (void *)ctx->insns;
-	prog->jited = 1;
-	prog->jited_len = image_size;
-
-	bpf_flush_icache(jit_data->header, ctx->insns + ctx->ninsns);
-
-	if (!prog->is_func || extra_pass) {
-out_offset:
-		kfree(ctx->offset);
-		kfree(jit_data);
-		prog->aux->jit_data = NULL;
-	}
-out:
-	if (tmp_blinded)
-		bpf_jit_prog_release_other(prog, prog == orig_prog ?
-					   tmp : orig_prog);
-	return prog;
 }
 
 void *bpf_jit_alloc_exec(unsigned long size)

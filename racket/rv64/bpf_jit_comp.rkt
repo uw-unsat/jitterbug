@@ -385,7 +385,7 @@
      (when (! is64)
        (emit_zext_32 rd ctx))]
 
-    [(list 'BPF_JMP 'BPF_JA 'BPF_K)
+    [(list 'BPF_JMP 'BPF_JA)
       (define off32 (sign-extend off (bitvector 32)))
       (define rvoff (sign-extend (rv_offset i off32 ctx) (bitvector 64)))
       (emit_jump_and_link RV_REG_ZERO rvoff #f ctx)]

@@ -202,6 +202,9 @@
     (when (! (verify?))
       (set! imm (arbitrary imm)))
 
+    ; Construct the BPF instruction.
+    (define bpf-insn (bpf:insn code dst src off imm))
+
     ; Add a list of symbolics we made.
     ; Only useful in program synthesis where we may want to quantify over these variables.
     (add-symbolics (symbolics (list dst src off imm ctx insn-idx target-pc-base bpf-cpu target-cpu)))
@@ -246,7 +249,7 @@
       (when precondition-next-instruction
 
         ; Run the BPF interpreter on the symbolic BPF instruction
-        (bpf:interpret-instr bpf-cpu code dst src off imm)
+        (bpf:interpret-insn bpf-cpu bpf-insn)
 
         (for/all ([insns insns #:exhaustive])
 

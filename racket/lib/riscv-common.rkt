@@ -92,6 +92,9 @@
 (define (rv_addi rd rs1 imm11_0)
   (riscv:rv_i_insn 'addi rd rs1 (make-immediate imm11_0 12)))
 
+(define (rv_mv rd rs1)
+  (riscv:rv_i_insn 'addi rd rs1 (make-immediate 0 12)))
+
 (define (rv_sltu rd rs1 rs2)
   (riscv:rv_r_insn 'sltu rd rs1 rs2))
 

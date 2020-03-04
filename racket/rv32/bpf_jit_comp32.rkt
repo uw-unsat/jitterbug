@@ -135,12 +135,12 @@
       (emit (rv_auipc RV_REG_T1 upper) ctx)
       (emit (rv_jalr rd RV_REG_T1 lower) ctx)]))
 
-(define (emit_rv32_alu_i64 dst imm ctx op)
+(define (emit_alu_i64 dst imm ctx op)
   (define tmp1 (bpf2rv32 TMP_REG_1))
 
   (define rd (riscv_bpf_get_reg64 dst tmp1 ctx))
 
-  (switch op #:id SWITCH_emit_rv32_alu_i64
+  (switch op #:id SWITCH_emit_alu_i64
     [(BPF_MOV)
       (emit_imm32 rd imm ctx)]
 
@@ -180,7 +180,7 @@
           (emit (rv_slli (hi rd) (lo rd) (bvsub imm (bv 32 32))) ctx)
           (emit (rv_addi (lo rd) RV_REG_ZERO 0) ctx)]
         [(equal? imm (bv 0 32))
-          (comment "/* nop */")]
+          (comment "/* Do nothing. */")]
         [else
           (emit (rv_srli RV_REG_T0 (lo rd) (bvsub (bv 32 32) imm)) ctx)
           (emit (rv_slli (hi rd) (hi rd) imm) ctx)
@@ -193,7 +193,7 @@
           (emit (rv_srli (lo rd) (hi rd) (bvsub imm (bv 32 32))) ctx)
           (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx)]
         [(equal? imm (bv 0 32))
-          (comment "/* nop */")]
+          (comment "/* Do nothing. */")]
         [else
           (emit (rv_slli RV_REG_T0 (hi rd) (bvsub (bv 32 32) imm)) ctx)
           (emit (rv_srli (lo rd) (lo rd) imm) ctx)
@@ -206,7 +206,7 @@
           (emit (rv_srai (lo rd) (hi rd) (bvsub imm (bv 32 32))) ctx)
           (emit (rv_srai (hi rd) (hi rd) 31) ctx)]
         [(equal? imm (bv 0 32))
-          (comment "/* nop */")]
+          (comment "/* Do nothing. */")]
         [else
           (emit (rv_slli RV_REG_T0 (hi rd) (bvsub (bv 32 32) imm)) ctx)
           (emit (rv_srli (lo rd) (lo rd) imm) ctx)
@@ -217,12 +217,12 @@
   (riscv_bpf_put_reg64 dst rd ctx))
 
 
-(define (emit_rv32_alu_i32 dst imm ctx op)
+(define (emit_alu_i32 dst imm ctx op)
   (define tmp1 (bpf2rv32 TMP_REG_1))
 
   (define rd (riscv_bpf_get_reg32 dst tmp1 ctx))
 
-  (switch op #:id SWITCH_emit_rv32_alu_i32
+  (switch op #:id SWITCH_emit_alu_i32
     [(BPF_MOV)
       (emit_imm (lo rd) imm ctx)]
     [(BPF_ADD)
@@ -286,14 +286,14 @@
   (riscv_bpf_put_reg32 dst rd ctx))
 
 
-(define (emit_rv32_alu_r64 dst src ctx op)
+(define (emit_alu_r64 dst src ctx op)
   (define tmp1 (bpf2rv32 TMP_REG_1))
   (define tmp2 (bpf2rv32 TMP_REG_2))
 
   (define rd (riscv_bpf_get_reg64 dst tmp1 ctx))
   (define rs (riscv_bpf_get_reg64 src tmp2 ctx))
 
-  (switch op #:id SWITCH_emit_rv32_alu_r64
+  (switch op #:id SWITCH_emit_alu_r64
     [(BPF_MOV)
       (emit (rv_addi (lo rd) (lo rs) 0) ctx)
       (emit (rv_addi (hi rd) (hi rs) 0) ctx)]
@@ -395,14 +395,14 @@
   (riscv_bpf_put_reg64 dst rd ctx))
 
 
-(define (emit_rv32_alu_r32 dst src ctx op)
+(define (emit_alu_r32 dst src ctx op)
   (define tmp1 (bpf2rv32 TMP_REG_1))
   (define tmp2 (bpf2rv32 TMP_REG_2))
 
   (define rd (riscv_bpf_get_reg32 dst tmp1 ctx))
   (define rs (riscv_bpf_get_reg32 src tmp2 ctx))
 
-  (switch op #:id SWITCH_emit_rv32_alu_r32
+  (switch op #:id SWITCH_emit_alu_r32
     [(BPF_MOV)
       (emit (rv_addi (lo rd) (lo rs) 0) ctx)]
     [(BPF_ADD)
@@ -491,7 +491,7 @@
       (emit_jump_and_link RV_REG_ZERO rvoff #t ctx))
 )
 
-(define (emit_rv32_branch_r32 src1 src2 rvoff ctx op)
+(define (emit_branch_r32 src1 src2 rvoff ctx op)
   (define tmp1 (bpf2rv32 TMP_REG_1))
   (define tmp2 (bpf2rv32 TMP_REG_2))
 
@@ -506,7 +506,7 @@
   (emit_bcc op (lo rs1) (lo rs2) rvoff ctx))
 
 
-(define (emit_rv32_branch_r64 src1 src2 rvoff ctx op)
+(define (emit_branch_r64 src1 src2 rvoff ctx op)
   (define tmp1 (bpf2rv32 TMP_REG_1))
   (define tmp2 (bpf2rv32 TMP_REG_2))
 
@@ -518,7 +518,7 @@
   (define (NO_JUMP idx) (+ 6 (* 2 idx)))
   (define (JUMP idx) (+ 2 (* 2 idx)))
 
-  (switch op #:id SWITCH_emit_rv32_branch_r64
+  (switch op #:id SWITCH_emit_branch_r64
 
     [(BPF_JEQ)
       (emit (rv_bne (hi rs1) (hi rs2) (NO_JUMP 1)) ctx)
@@ -569,16 +569,16 @@
   (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
   (emit_jump_and_link RV_REG_ZERO rvoff #t ctx))
 
-(define (emit_rv32_rev16 rd ctx)
-  (begin/c #:id BLOCK_emit_rv32_rev16
+(define (emit_rev16 rd ctx)
+  (begin/c #:id BLOCK_emit_rev16
     (emit (rv_slli rd rd 16) ctx)
     (emit (rv_slli RV_REG_T1 rd 8) ctx)
     (emit (rv_srli rd rd 8) ctx)
     (emit (rv_add RV_REG_T1 rd RV_REG_T1) ctx)
     (emit (rv_srli rd RV_REG_T1 16) ctx)))
 
-(define (emit_rv32_rev32 rd ctx)
-  (begin/c #:id BLOCK_emit_rv32_rev32
+(define (emit_rev32 rd ctx)
+  (begin/c #:id BLOCK_emit_rev32
     (emit (rv_addi RV_REG_T1 RV_REG_ZERO 0) ctx)
 
     (emit (rv_andi RV_REG_T0 rd #xff) ctx)
@@ -613,32 +613,32 @@
   (match code
 
     [(list 'BPF_ALU64 code 'BPF_X)
-      (emit_rv32_alu_r64 dst src ctx code)]
+      (emit_alu_r64 dst src ctx code)]
 
     [(list 'BPF_ALU64 (and code (or 'BPF_ADD 'BPF_SUB 'BPF_MUL 'BPF_DIV 'BPF_MOD)) 'BPF_K)
       (emit_imm32 tmp2 imm ctx)
-      (emit_rv32_alu_r64 dst tmp2 ctx code)]
+      (emit_alu_r64 dst tmp2 ctx code)]
 
     [(list 'BPF_ALU64 code 'BPF_K)
-      (emit_rv32_alu_i64 dst imm ctx code)]
+      (emit_alu_i64 dst imm ctx code)]
 
     [(list 'BPF_ALU64 (and code 'BPF_NEG))
-      (emit_rv32_alu_r64 dst (bpf2rv32 0) ctx code)]
+      (emit_alu_r64 dst (bpf2rv32 0) ctx code)]
 
     [(list 'BPF_ALU code 'BPF_X)
-      (emit_rv32_alu_r32 dst src ctx code)]
+      (emit_alu_r32 dst src ctx code)]
 
     [(list 'BPF_ALU (and code (or 'BPF_DIV 'BPF_MOD 'BPF_MUL)) 'BPF_K)
       (emit_imm32 tmp2 imm ctx)
-      (emit_rv32_alu_r32 dst tmp2 ctx code)]
+      (emit_alu_r32 dst tmp2 ctx code)]
 
     [(list 'BPF_ALU code 'BPF_K)
-      (emit_rv32_alu_i32 dst imm ctx code)]
+      (emit_alu_i32 dst imm ctx code)]
 
     [(list 'BPF_ALU (and code 'BPF_NEG))
-      (emit_rv32_alu_r32 dst (bpf2rv32 0) ctx code)]
+      (emit_alu_r32 dst (bpf2rv32 0) ctx code)]
 
-    [(list 'BPF_JMP 'BPF_JA 'BPF_K)
+    [(list 'BPF_JMP 'BPF_JA)
       (define off32 (sign-extend off (bitvector 32)))
       (define rvoff (rv_offset insn off32 ctx))
       (emit_jump_and_link RV_REG_ZERO rvoff #f ctx)]
@@ -652,8 +652,8 @@
         (define e (context-ninsns ctx))
         (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32)))))
       (if is64
-        (emit_rv32_branch_r64 dst src rvoff ctx code)
-        (emit_rv32_branch_r32 dst src rvoff ctx code))]
+        (emit_branch_r64 dst src rvoff ctx code)
+        (emit_branch_r32 dst src rvoff ctx code))]
 
     [(list 'BPF_ALU 'BPF_END 'BPF_FROM_LE)
       (define rd (riscv_bpf_get_reg64 dst tmp1 ctx))
@@ -666,7 +666,7 @@
         [(equal? imm (bv 32 32))
           (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx)]
         [(equal? imm (bv 64 32))
-          (comment "/* Do nothing */")]
+          (comment "/* Do nothing. */")]
         [else
           (assert #f)])
 
@@ -677,10 +677,10 @@
 
       (cond
         [(equal? imm (bv 16 32))
-          (emit_rv32_rev16 (lo rd) ctx)
+          (emit_rev16 (lo rd) ctx)
           (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx)]
         [(equal? imm (bv 32 32))
-          (emit_rv32_rev32 (lo rd) ctx)
+          (emit_rev32 (lo rd) ctx)
           (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx)]
         [(equal? imm (bv 64 32))
           (comment "/* Swap upper and lower halves. */")
@@ -688,9 +688,9 @@
           (emit (rv_addi (lo rd) (hi rd) 0) ctx)
           (emit (rv_addi (hi rd) RV_REG_T0 0) ctx)
 
-          (comment "/* Swap each half */")
-          (emit_rv32_rev32 (lo rd) ctx)
-          (emit_rv32_rev32 (hi rd) ctx)]
+          (comment "/* Swap each half. */")
+          (emit_rev32 (lo rd) ctx)
+          (emit_rev32 (hi rd) ctx)]
         [else (assert #f)])
 
       (riscv_bpf_put_reg64 dst rd ctx)]

@@ -58,6 +58,7 @@
     "rv encoding tests"
     (enc-verify-case rv_add (choose-reg) (choose-reg) (choose-reg))
     (enc-verify-case rv_addi (choose-reg) (choose-reg) (choose-imm11_0))
+    (enc-verify-case rv_mv (choose-reg) (choose-reg))
     (enc-verify-case rv_sub (choose-reg) (choose-reg) (choose-reg))
     (enc-verify-case rv_and (choose-reg) (choose-reg) (choose-reg))
     (enc-verify-case rv_andi (choose-reg) (choose-reg) (choose-imm11_0))

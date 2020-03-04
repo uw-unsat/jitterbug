@@ -3,8 +3,7 @@
  * Common functionality for RV32 and RV64 BPF JIT compilers
  *
  * Copyright (c) 2019 Björn Töpel <bjorn.topel@"@"gmail.com>
- * Copyright (c) 2020 Luke Nelson <luke.r.nels@"@"gmail.com>
- * Copyright (c) 2020 Xi Wang <xi.wang@"@"gmail.com>
+ *
  */
 
 #ifndef _BPF_JIT_H
@@ -292,9 +291,14 @@ static inline u32 rv_amo_insn(u8 funct5, u8 aq, u8 rl, u8 rs2, u8 rs1,
 
 @|rv_amoadd_w|
 
-#if __riscv_xlen == 64
+/*
+ * RV64-only instructions.
+ *
+ * These instructions are not available on RV32.  Wrap them below a #if to
+ * ensure that the RV32 JIT doesn't emit any of these instructions.
+ */
 
-/* RV64-only instructions. */
+#if __riscv_xlen == 64
 
 @|rv_addiw|
 
@@ -329,5 +333,11 @@ static inline u32 rv_amo_insn(u8 funct5, u8 aq, u8 rl, u8 rs2, u8 rs1,
 @|rv_amoadd_d|
 
 #endif /* __riscv_xlen == 64 */
+
+void bpf_jit_build_prologue(struct rv_jit_context *ctx);
+void bpf_jit_build_epilogue(struct rv_jit_context *ctx);
+
+int bpf_jit_emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
+		      bool extra_pass);
 
 #endif /* _BPF_JIT_H */
