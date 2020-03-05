@@ -50,6 +50,8 @@ specification and other common BPF functionality.
 `racket/lib/riscv-common.rkt` provides features specific
 to the JIT for the RISC-V ISA.
 
+`racket/lib/bvaxiom.rkt` axiomatizes bvmul/bvudiv/bvurem.
+
 `racket/lib/lemmas.lean` contains the axiomatization of bitvector
 operations in Lean.
 
@@ -286,8 +288,9 @@ is currently verified for. For those instructions, it proves that
 the JIT is correct for all possible initial register values, for
 all jump offsets, for all immediate values, etc.
 
-There are several properties of the JIT that are currently not
-specified or verified:
+The verification proves the JIT correct for individual BPF instructions
+at a time.  There are several properties of the JIT that are currently
+not specified or verified:
 
 - Memory instructions (e.g. `BPF_LD`, `BPF_ST`).
 
@@ -297,26 +300,21 @@ specified or verified:
 
 - Call instructions (e.g., `BPF_CALL`, `BPF_TAIL_CALL`).
 
-- `build_body`: the verification proves the JIT correct for individual
-  BPF instructions at a time.
+The verification makes the following assumptions:
 
-- The loop in `bpf_int_jit_compile`: verification assumes the
-  `ctx->offset` mapping has already been correctly constructed by
-  previous iterations.
+- The `ctx->offset` mapping has been correctly constructed.
+
+- The BPF program has passed the kernel's BPF verifier: e.g., it
+  assumes no divide-by-zero or out-of-range shifts.
+
+- The number of BPF instructions is less than 16,777,216 and the
+  total number of generated RISC-V instructions is less than 134,217,728.
+  These bounds can be increased but will increase overall verification
+  time for jumps.
 
 - The translation between the verified JIT in Racket and the C code
   is trusted. Any mismatches in this translation can mean there are
   bugs in the C version not present in the verified one.
-
-- The verification assumes that the BPF program being compiled
-  passed the kernel's BPF verifier: e.g., it assumes no divide-by-zero
-  or out-of-range shifts.
-
-- Verification makes assumptions on the total size of the compiled
-  BPF program for jumps: it assumes that the number of BPF instructions
-  is less than 16,777,216; and that the total number of generated
-  RISC-V instructions is less than 134,217,728.  These bounds can be
-  increased but will increase overall verification time for jumps.
 
 [Boolector]: https://boolector.github.io
 [Racket]: https://racket-lang.org
