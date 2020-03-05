@@ -5,4 +5,4 @@
   (only-in "../../rv64/spec.rkt" check-jit))
 
 (module+ test
-  (time (verify-alu32-x "riscv64-alu32-x tests" check-jit)))
+  (time (verify-jmp32-k "riscv64-jmp32-k tests" check-jit)))

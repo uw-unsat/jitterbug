@@ -3,7 +3,6 @@
 (require
   rosette/lib/angelic
   serval/lib/solver
-  serval/lib/unittest
   "bpf_jit_comp32.rkt"
   "../lib/riscv-common.rkt"
   "../lib/bpf-common.rkt"
@@ -119,11 +118,3 @@
           code
           rv32-target
           #:assumptions bvaxiom:assumptions)))))
-
-(define-syntax-rule (jit-verify-case code)
-  (test-case+ (format "VERIFY ~s" code) (check-jit code)))
-
-(define-syntax-rule (jit-test-case code)
-  (test-case+ (format "TEST ~s" code)
-    (parameterize [(verify? #f)]
-      (quickcheck (check-jit code)))))

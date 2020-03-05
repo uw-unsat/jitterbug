@@ -6,7 +6,6 @@
   serval/lib/solver
   "bpf_jit_comp.rkt"
   rosette/lib/angelic
-  serval/lib/unittest
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/base)
@@ -105,11 +104,3 @@
         (bpf-jit-specification
           code
           rv64-target)))))
-
-(define-syntax-rule (jit-verify-case code)
-  (test-case+ (format "VERIFY ~s" code) (check-jit code)))
-
-(define-syntax-rule (jit-test-case code)
-  (test-case+ (format "TEST ~s" code)
-    (parameterize [(verify? #f)]
-      (quickcheck (check-jit code)))))

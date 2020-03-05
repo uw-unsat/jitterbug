@@ -1,25 +1,8 @@
-#lang racket/base
+#lang racket
 
-(require "../../rv64/spec.rkt" "../../rv64/bpf_jit_comp.rkt")
-(require serval/lib/unittest)
-
-(define tests
-  (test-suite+
-    "riscv64-alu32-k tests"
-    (jit-verify-case '(BPF_ALU BPF_MOV BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_ADD BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_SUB BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_AND BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_OR BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_XOR BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_MUL BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_DIV BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_MOD BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_LSH BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_RSH BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_ARSH BPF_K))
-    (jit-verify-case '(BPF_ALU BPF_NEG))
-))
+(require
+  "../../lib/tests.rkt"
+  (only-in "../../rv64/spec.rkt" check-jit))
 
 (module+ test
-  (time (run-tests tests)))
+  (time (verify-alu32-k "riscv64-alu32-k tests" check-jit)))
