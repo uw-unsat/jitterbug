@@ -307,8 +307,8 @@ The verification makes the following assumptions:
 - The BPF program has passed the kernel's BPF verifier: e.g., it
   assumes no divide-by-zero or out-of-range shifts.
 
-- The number of BPF instructions is less than 16,777,216 and the
-  total number of generated RISC-V instructions is less than 134,217,728.
+- The number of BPF instructions is less than 16M and the
+  generated RISC-V image is smaller than 128MB.
   These bounds can be increased but will increase overall verification
   time for jumps.
 
