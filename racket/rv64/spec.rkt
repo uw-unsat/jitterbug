@@ -4,7 +4,7 @@
   "../lib/bpf-common.rkt"
   "../lib/riscv-common.rkt"
   serval/lib/solver
-  "bpf_jit_comp.rkt"
+  "bpf_jit_comp64.rkt"
   rosette/lib/angelic
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)

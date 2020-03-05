@@ -34,10 +34,10 @@ raco pkg install --auto ./serval
 
 ## Directory structure
 
-`arch/riscv/net/bpf_jit.h` contains the common code shared by the
-rv32 and rv64 JITs.
+`arch/riscv/net/bpf_jit.h` and `arch/riscv/net/bpf_jit_core.c`
+contains the common code shared by the rv32 and rv64 JITs.
 
-`arch/riscv/net/bpf_jit_comp.c` contains the C implementation of
+`arch/riscv/net/bpf_jit_comp64.c` contains the C implementation of
 the BPF JIT for rv64 from Linux.
 
 `arch/riscv/net/bpf_jit_comp32.c` contains a C implementation of
@@ -53,7 +53,7 @@ to the JIT for the RISC-V ISA.
 `racket/lib/lemmas.lean` contains the axiomatization of bitvector
 operations in Lean.
 
-`racket/rv64/bpf_jit_comp.rkt` is a manual translation
+`racket/rv64/bpf_jit_comp64.rkt` is a manual translation
 of the C implementation of the rv64 JIT into Racket for verification.
 
 `racket/rv64/spec.rkt` contains the specification of the BPF JIT
@@ -93,7 +93,7 @@ raco test racket/test/rv64/verify-alu32-x.rkt
 
 As an example, let's inject a bug fixed in commit [1e692f09e091].
 Specifically, remove the zero extension for `BPF_ALU|BPF_ADD|BPF_X`
-in `racket/rv64/bpf_jit_comp.rkt`:
+in `racket/rv64/bpf_jit_comp64.rkt`:
 
 ```
     [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ADD 'BPF_X)
