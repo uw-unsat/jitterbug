@@ -97,7 +97,7 @@ static void emit_imm32(const s8 *rd, s32 imm, struct rv_jit_context *ctx)
 
 	/* Sign-extend into upper bits. */
 	if (imm >= 0)
-		emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+		emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 	else
 		emit(rv_addi(hi(rd), RV_REG_ZERO, -1), ctx);
 }
@@ -118,8 +118,8 @@ static void __build_epilogue(bool is_tail_call, struct rv_jit_context *ctx)
 
 	/* Set return value if not tail call. */
 	if (!is_tail_call) {
-		emit(rv_addi(RV_REG_A0, lo(r0), 0), ctx);
-		emit(rv_addi(RV_REG_A1, hi(r0), 0), ctx);
+		emit(rv_mv(RV_REG_A0, lo(r0)), ctx);
+		emit(rv_mv(RV_REG_A1, hi(r0)), ctx);
 	}
 
 	/* Restore callee-saved registers. */
@@ -191,7 +191,7 @@ static void bpf_put_reg32(const s8 *reg, const s8 *src,
 		if (!ctx->prog->aux->verifier_zext)
 			emit(rv_sw(RV_REG_FP, hi(reg), RV_REG_ZERO), ctx);
 	} else if (!ctx->prog->aux->verifier_zext) {
-		emit(rv_addi(hi(reg), RV_REG_ZERO, 0), ctx);
+		emit(rv_mv(hi(reg), RV_REG_ZERO), ctx);
 	}
 }
 
@@ -229,7 +229,7 @@ static void emit_alu_i64(const s8 *dst, s32 imm,
 			emit(rv_and(lo(rd), lo(rd), RV_REG_T0), ctx);
 		}
 		if (imm >= 0)
-			emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+			emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 		break;
 	case BPF_OR:
 		if (is_12b_int(imm)) {
@@ -254,7 +254,7 @@ static void emit_alu_i64(const s8 *dst, s32 imm,
 	case BPF_LSH:
 		if (imm >= 32) {
 			emit(rv_slli(hi(rd), lo(rd), imm - 32), ctx);
-			emit(rv_addi(lo(rd), RV_REG_ZERO, 0), ctx);
+			emit(rv_mv(lo(rd), RV_REG_ZERO), ctx);
 		} else if (imm == 0) {
 			/* Do nothing. */
 		} else {
@@ -267,7 +267,7 @@ static void emit_alu_i64(const s8 *dst, s32 imm,
 	case BPF_RSH:
 		if (imm >= 32) {
 			emit(rv_srli(lo(rd), hi(rd), imm - 32), ctx);
-			emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+			emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 		} else if (imm == 0) {
 			/* Do nothing. */
 		} else {
@@ -384,8 +384,8 @@ static void emit_alu_r64(const s8 *dst, const s8 *src,
 
 	switch (op) {
 	case BPF_MOV:
-		emit(rv_addi(lo(rd), lo(rs), 0), ctx);
-		emit(rv_addi(hi(rd), hi(rs), 0), ctx);
+		emit(rv_mv(lo(rd), lo(rs)), ctx);
+		emit(rv_mv(hi(rd), hi(rs)), ctx);
 		break;
 	case BPF_ADD:
 		if (rd == rs) {
@@ -430,7 +430,7 @@ static void emit_alu_r64(const s8 *dst, const s8 *src,
 		emit(rv_addi(RV_REG_T0, lo(rs), -32), ctx);
 		emit(rv_blt(RV_REG_T0, RV_REG_ZERO, 8), ctx);
 		emit(rv_sll(hi(rd), lo(rd), RV_REG_T0), ctx);
-		emit(rv_addi(lo(rd), RV_REG_ZERO, 0), ctx);
+		emit(rv_mv(lo(rd), RV_REG_ZERO), ctx);
 		emit(rv_jal(RV_REG_ZERO, 16), ctx);
 		emit(rv_addi(RV_REG_T1, RV_REG_ZERO, 31), ctx);
 		emit(rv_srli(RV_REG_T0, lo(rd), 1), ctx);
@@ -444,7 +444,7 @@ static void emit_alu_r64(const s8 *dst, const s8 *src,
 		emit(rv_addi(RV_REG_T0, lo(rs), -32), ctx);
 		emit(rv_blt(RV_REG_T0, RV_REG_ZERO, 8), ctx);
 		emit(rv_srl(lo(rd), hi(rd), RV_REG_T0), ctx);
-		emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+		emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 		emit(rv_jal(RV_REG_ZERO, 16), ctx);
 		emit(rv_addi(RV_REG_T1, RV_REG_ZERO, 31), ctx);
 		emit(rv_slli(RV_REG_T0, hi(rd), 1), ctx);
@@ -489,7 +489,7 @@ static void emit_alu_r32(const s8 *dst, const s8 *src,
 
 	switch (op) {
 	case BPF_MOV:
-		emit(rv_addi(lo(rd), lo(rs), 0), ctx);
+		emit(rv_mv(lo(rd), lo(rs)), ctx);
 		break;
 	case BPF_ADD:
 		emit(rv_add(lo(rd), lo(rd), lo(rs)), ctx);
@@ -723,7 +723,7 @@ static void emit_call(bool fixed, u64 addr, struct rv_jit_context *ctx)
 	emit(rv_sw(RV_REG_SP, 4, hi(r5)), ctx);
 
 	/* Backup TCC. */
-	emit(rv_addi(RV_REG_TCC_SAVED, RV_REG_TCC, 0), ctx);
+	emit(rv_mv(RV_REG_TCC_SAVED, RV_REG_TCC), ctx);
 
 	/*
 	 * Use lui/jalr pair to jump to absolute address. Don't use emit_imm as
@@ -734,11 +734,11 @@ static void emit_call(bool fixed, u64 addr, struct rv_jit_context *ctx)
 	emit(rv_jalr(RV_REG_RA, RV_REG_T1, lower), ctx);
 
 	/* Restore TCC. */
-	emit(rv_addi(RV_REG_TCC, RV_REG_TCC_SAVED, 0), ctx);
+	emit(rv_mv(RV_REG_TCC, RV_REG_TCC_SAVED), ctx);
 
 	/* Set return value and restore stack. */
-	emit(rv_addi(lo(r0), RV_REG_A0, 0), ctx);
-	emit(rv_addi(hi(r0), RV_REG_A1, 0), ctx);
+	emit(rv_mv(lo(r0), RV_REG_A0), ctx);
+	emit(rv_mv(hi(r0), RV_REG_A1), ctx);
 	emit(rv_addi(RV_REG_SP, RV_REG_SP, 16), ctx);
 }
 
@@ -799,7 +799,7 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	if (is_12b_check(off, insn))
 		return -1;
 	emit(rv_lw(RV_REG_T0, off, RV_REG_T0), ctx);
-	emit(rv_addi(RV_REG_TCC, RV_REG_T1, 0), ctx);
+	emit(rv_mv(RV_REG_TCC, RV_REG_T1), ctx);
 	/* Epilogue jumps to *(t0 + 4). */
 	__build_epilogue(true, ctx);
 	return 0;
@@ -820,17 +820,17 @@ static int emit_load_r64(const s8 *dst, const s8 *src, s16 off,
 	case BPF_B:
 		emit(rv_lbu(lo(rd), 0, RV_REG_T0), ctx);
 		if (!ctx->prog->aux->verifier_zext)
-			emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+			emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 		break;
 	case BPF_H:
 		emit(rv_lhu(lo(rd), 0, RV_REG_T0), ctx);
 		if (!ctx->prog->aux->verifier_zext)
-			emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+			emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 		break;
 	case BPF_W:
 		emit(rv_lw(lo(rd), 0, RV_REG_T0), ctx);
 		if (!ctx->prog->aux->verifier_zext)
-			emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+			emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 		break;
 	case BPF_DW:
 		emit(rv_lw(lo(rd), 0, RV_REG_T0), ctx);
@@ -895,7 +895,7 @@ static void emit_rev16(const s8 rd, struct rv_jit_context *ctx)
 
 static void emit_rev32(const s8 rd, struct rv_jit_context *ctx)
 {
-	emit(rv_addi(RV_REG_T1, RV_REG_ZERO, 0), ctx);
+	emit(rv_mv(RV_REG_T1, RV_REG_ZERO), ctx);
 	emit(rv_andi(RV_REG_T0, rd, 255), ctx);
 	emit(rv_add(RV_REG_T1, RV_REG_T1, RV_REG_T0), ctx);
 	emit(rv_slli(RV_REG_T1, RV_REG_T1, 8), ctx);
@@ -910,7 +910,7 @@ static void emit_rev32(const s8 rd, struct rv_jit_context *ctx)
 	emit(rv_srli(rd, rd, 8), ctx);
 	emit(rv_andi(RV_REG_T0, rd, 255), ctx);
 	emit(rv_add(RV_REG_T1, RV_REG_T1, RV_REG_T0), ctx);
-	emit(rv_addi(rd, RV_REG_T1, 0), ctx);
+	emit(rv_mv(rd, RV_REG_T1), ctx);
 }
 
 static void emit_zext64(const s8 *dst, struct rv_jit_context *ctx)
@@ -919,7 +919,7 @@ static void emit_zext64(const s8 *dst, struct rv_jit_context *ctx)
 	const s8 *tmp1 = bpf2rv32[TMP_REG_1];
 
 	rd = bpf_get_reg64(dst, tmp1, ctx);
-	emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+	emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 	bpf_put_reg64(dst, rd, ctx);
 }
 
@@ -1052,7 +1052,7 @@ int bpf_jit_emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
 			/* Fallthrough. */
 		case 32:
 			if (!ctx->prog->aux->verifier_zext)
-				emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+				emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 			break;
 		case 64:
 			/* Do nothing. */
@@ -1074,18 +1074,18 @@ int bpf_jit_emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
 		case 16:
 			emit_rev16(lo(rd), ctx);
 			if (!ctx->prog->aux->verifier_zext)
-				emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+				emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 			break;
 		case 32:
 			emit_rev32(lo(rd), ctx);
 			if (!ctx->prog->aux->verifier_zext)
-				emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
+				emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
 			break;
 		case 64:
 			/* Swap upper and lower halves. */
-			emit(rv_addi(RV_REG_T0, lo(rd), 0), ctx);
-			emit(rv_addi(lo(rd), hi(rd), 0), ctx);
-			emit(rv_addi(hi(rd), RV_REG_T0, 0), ctx);
+			emit(rv_mv(RV_REG_T0, lo(rd)), ctx);
+			emit(rv_mv(lo(rd), hi(rd)), ctx);
+			emit(rv_mv(hi(rd), RV_REG_T0), ctx);
 
 			/* Swap each half. */
 			emit_rev32(lo(rd), ctx);
@@ -1295,11 +1295,11 @@ void bpf_jit_build_prologue(struct rv_jit_context *ctx)
 
 	/* Set up BPF stack pointer. */
 	emit(rv_addi(lo(fp), RV_REG_SP, bpf_stack_adjust), ctx);
-	emit(rv_addi(hi(fp), RV_REG_ZERO, 0), ctx);
+	emit(rv_mv(hi(fp), RV_REG_ZERO), ctx);
 
 	/* Set up context pointer. */
-	emit(rv_addi(lo(r1), RV_REG_A0, 0), ctx);
-	emit(rv_addi(hi(r1), RV_REG_ZERO, 0), ctx);
+	emit(rv_mv(lo(r1), RV_REG_A0), ctx);
+	emit(rv_mv(hi(r1), RV_REG_ZERO), ctx);
 
 	ctx->stack_size = stack_adjust;
 }

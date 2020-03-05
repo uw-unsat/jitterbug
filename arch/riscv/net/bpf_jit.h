@@ -214,6 +214,11 @@ static inline u32 rv_addi(u8 rd, u8 rs1, u16 imm11_0)
 	return rv_i_insn(imm11_0, rs1, 0, rd, 0x13);
 }
 
+static inline u32 rv_mv(u8 rd, u8 rs1)
+{
+	return rv_addi(rd, rs1, 0);
+}
+
 static inline u32 rv_andi(u8 rd, u8 rs1, u16 imm11_0)
 {
 	return rv_i_insn(imm11_0, rs1, 7, rd, 0x13);
