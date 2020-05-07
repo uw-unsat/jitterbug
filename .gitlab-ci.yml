@@ -2,10 +2,11 @@ image: unsat/serval-tools:latest
 
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
-  BOOLECTOR: /opt/boolector/3.2.0/bin/boolector
+  BOOLECTOR: /opt/boolector/3.2.1-cadical/bin/boolector
   Z3: /opt/z3/4.8.7/bin/z3
 
 before_script:
+  - export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib64"
   - raco pkg install ./serval
 
 verify-all:
