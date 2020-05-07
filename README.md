@@ -103,16 +103,18 @@ Specifically, remove the zero extension for `BPF_ALU|BPF_ADD|BPF_X`
 in `racket/rv64/bpf_jit_comp64.rkt`:
 
 ```
-    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ADD 'BPF_X)
+    [((BPF_ALU BPF_ADD BPF_X)
+      (BPF_ALU64 BPF_ADD BPF_X))
      (emit (if is64 (rv_add rd rd rs) (rv_addw rd rd rs)) ctx)
-     (when (! is64)
+     (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
        (emit_zext_32 rd ctx))]
 ```
 
 Now we have a buggy JIT implementation:
 
 ```
-    [(list (or 'BPF_ALU 'BPF_ALU64) 'BPF_ADD 'BPF_X)
+    [((BPF_ALU BPF_ADD BPF_X)
+      (BPF_ALU64 BPF_ADD BPF_X))
      (emit (if is64 (rv_add rd rd rs) (rv_addw rd rd rs)) ctx)]
 ```
 
@@ -125,7 +127,8 @@ raco test racket/test/rv64/verify-alu32-x.rkt
 Verification will fail with a counterexample:
 
 ```
-Running test "VERIFY (BPF_ALU BPF_ADD BPF_X)"
+[ RUN      ] "VERIFY (BPF_ALU BPF_ADD BPF_X)"
+<unknown>: <unknown>: bpf-jit-specification: Final registers must match
 --------------------
 riscv64-alu32-x tests > VERIFY (BPF_ALU BPF_ADD BPF_X)
 FAILURE
@@ -297,9 +300,9 @@ The verification proves the JIT correct for individual BPF instructions
 at a time.  There are several properties of the JIT that are currently
 not specified or verified:
 
-- JIT prologue and epilogue.
+- Limited support for verifying prologue and epilogue, on riscv32 only.
 
-- Limited support for call/exit instructions:
+- Limited support for verifying call/exit instructions:
   + `BPF_CALL`, `BPF_TAIL_CALL`, and `BPF_EXIT` are supported on riscv32 and riscv64;
   + `BPF_CALL` and `BPF_EXIT` are supported on arm32 and arm64.
 
