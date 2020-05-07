@@ -57,6 +57,11 @@ cd serval-bpf
 raco pkg install --auto ./serval
 ```
 
+You may also wish to install the [Boolector] SMT solver.
+The verification and synthesis will attempt to use it first, before
+falling back to Z3, which may take significantly longer
+(e.g., more than 10x slower for synthesis).
+
 ## Directory structure
 
 - `arch/` contains the C code of the BPF JITs from the Linux kernel.
@@ -220,11 +225,7 @@ You can try this feature out by running the following:
 raco test racket/test/rv32/synthesize-alu64-x.rkt
 ```
 
-Note that this test will attempt to use the [Boolector] SMT solver
-first; if you do not have it installed it will fall back to Rosette's
-provided Z3, which may take significantly longer (more than 10x
-slower on my laptop).  It will produce output similar to the
-following:
+It will produce output similar to the following:
 
 ```
 riscv32-alu64-x synthesis
