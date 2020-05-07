@@ -11,6 +11,7 @@
   rosette/lib/synthax
   rosette/lib/angelic
   "../lib/bpf-common.rkt"
+  "../lib/spec/bpf.rkt"
   "../lib/riscv-common.rkt"
   serval/lib/solver
   "../lib/rvsynth.rkt"
@@ -29,10 +30,10 @@
     [(zero) 'zero]
     [(tmp) 't0]
     [(tmp2) 't1]
-    [(hidst) (car (list-ref regmap (bpf:reg-idx dst)))]
-    [(lodst) (cdr (list-ref regmap (bpf:reg-idx dst)))]
-    [(hisrc) (car (list-ref regmap (bpf:reg-idx src)))]
-    [(losrc) (cdr (list-ref regmap (bpf:reg-idx src)))]))
+    [(hidst) (car (list-ref regmap (bpf:reg->idx dst)))]
+    [(lodst) (cdr (list-ref regmap (bpf:reg->idx dst)))]
+    [(hisrc) (car (list-ref regmap (bpf:reg->idx src)))]
+    [(losrc) (cdr (list-ref regmap (bpf:reg->idx src)))]))
 
 (define (render-reg r)
   (case r
@@ -61,8 +62,18 @@
       (format "    emit(rv_~s(~a, ~a, ~a), ctx);" op rd rs1 imm)]))
 
 (define (render-jit jit)
-  (define instrs (string-join (map render-instr (vector->list jit)) "\n" #:after-last "\n"))
-  (format "void emit_op(u8 rd, u8 rs, s32 imm, struct rv_jit_context *ctx) {\n~a}" instrs))
+  (define condition (conditional-condition jit))
+  (define iftrue (conditional-iftrue jit))
+  (define iffalse (conditional-iffalse jit))
+  (case condition
+    [(alwaystrue)
+      (define instrs (string-join (map render-instr (vector->list iftrue)) "\n" #:after-last "\n"))
+      (format "void emit_op(u8 rd, u8 rs, s32 imm, struct rv_jit_context *ctx) {\n~a}" instrs)]
+    [(src-dst-alias)
+      (define instrs-true (string-join (map render-instr (vector->list iftrue)) "\n" #:after-last "\n"))
+      (define instrs-false (string-join (map render-instr (vector->list iffalse)) "\n" #:after-last "\n"))
+      (format "void emit_op(u8 rd, u8 rs, s32 imm, struct rv_jit_context *ctx) {\nif (rd == rs) {\n~a} else {\n~a}\n}"
+              instrs-true instrs-false)]))
 
 (define (synth-jit-loop op #:maxsize maxsize)
   (let/ec k
@@ -89,6 +100,5 @@
             [dst-regs rv32-dst-regs]
             [src-regs rv32-src-regs]
             [interpret-reg rv32-interpret-reg]
-            [core:target-endian 'little]
             [core:target-pointer-bitwidth 32])
           (synth-and-print code))))))

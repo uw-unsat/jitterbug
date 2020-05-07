@@ -1,3 +1,4 @@
+// clang-format off
 // SPDX-License-Identifier: GPL-2.0
 /*
  * BPF JIT compiler for RV32G
@@ -13,8 +14,35 @@
 #include <linux/filter.h>
 #include "bpf_jit.h"
 
+/*
+ * Stack layout during BPF program execution:
+ *
+ *                     high
+ *     RV32 fp =>  +----------+
+ *                 | saved ra |
+ *                 | saved fp | RV32 callee-saved registers
+ *                 |   ...    |
+ *                 +----------+ <= (fp - 4 * NR_SAVED_REGISTERS)
+ *                 |  hi(R6)  |
+ *                 |  lo(R6)  |
+ *                 |  hi(R7)  | JIT scratch space for BPF registers
+ *                 |  lo(R7)  |
+ *                 |   ...    |
+ *  BPF_REG_FP =>  +----------+ <= (fp - 4 * NR_SAVED_REGISTERS
+ *                 |          |        - 4 * BPF_JIT_SCRATCH_REGS)
+ *                 |          |
+ *                 |   ...    | BPF program stack
+ *                 |          |
+ *     RV32 sp =>  +----------+
+ *                 |          |
+ *                 |   ...    | Function call stack
+ *                 |          |
+ *                 +----------+
+ *                     low
+ */
+
 enum {
-	/* Stack layout - these are offsets from (top of stack - 4). */
+	/* Stack layout - these are offsets from top of JIT scratch space. */
 	BPF_R6_HI,
 	BPF_R6_LO,
 	BPF_R7_HI,
@@ -29,7 +57,11 @@ enum {
 	BPF_JIT_SCRATCH_REGS,
 };
 
-#define STACK_OFFSET(k) (-4 - ((k) * 4))
+/* Number of callee-saved registers stored to stack: ra, fp, s1--s7. */
+#define NR_SAVED_REGISTERS	9
+
+/* Offset from fp for BPF registers stored on stack. */
+#define STACK_OFFSET(k)	(-4 - (4 * NR_SAVED_REGISTERS) - (4 * (k)))
 
 #define TMP_REG_1	(MAX_BPF_JIT_REG + 0)
 #define TMP_REG_2	(MAX_BPF_JIT_REG + 1)
@@ -92,60 +124,24 @@ static void emit_imm(const s8 rd, s32 imm, struct rv_jit_context *ctx)
 
 static void emit_imm32(const s8 *rd, s32 imm, struct rv_jit_context *ctx)
 {
-	/* Emit immediate into lower bits. */
-	emit_imm(lo(rd), imm, ctx);
-
-	/* Sign-extend into upper bits. */
-	if (imm >= 0)
-		emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
-	else
-		emit(rv_addi(hi(rd), RV_REG_ZERO, -1), ctx);
+// clang-format on
+@|emit_imm32|
+// clang-format off
 }
 
 static void emit_imm64(const s8 *rd, s32 imm_hi, s32 imm_lo,
 		       struct rv_jit_context *ctx)
 {
-	emit_imm(lo(rd), imm_lo, ctx);
-	emit_imm(hi(rd), imm_hi, ctx);
+// clang-format on
+@|emit_imm64|
+// clang-format off
 }
 
 static void __build_epilogue(bool is_tail_call, struct rv_jit_context *ctx)
 {
-	int stack_adjust = ctx->stack_size, store_offset = stack_adjust - 4;
-	const s8 *r0 = bpf2rv32[BPF_REG_0];
-
-	store_offset -= 4 * BPF_JIT_SCRATCH_REGS;
-
-	/* Set return value if not tail call. */
-	if (!is_tail_call) {
-		emit(rv_mv(RV_REG_A0, lo(r0)), ctx);
-		emit(rv_mv(RV_REG_A1, hi(r0)), ctx);
-	}
-
-	/* Restore callee-saved registers. */
-	emit(rv_lw(RV_REG_RA, store_offset - 0, RV_REG_SP), ctx);
-	emit(rv_lw(RV_REG_FP, store_offset - 4, RV_REG_SP), ctx);
-	emit(rv_lw(RV_REG_S1, store_offset - 8, RV_REG_SP), ctx);
-	emit(rv_lw(RV_REG_S2, store_offset - 12, RV_REG_SP), ctx);
-	emit(rv_lw(RV_REG_S3, store_offset - 16, RV_REG_SP), ctx);
-	emit(rv_lw(RV_REG_S4, store_offset - 20, RV_REG_SP), ctx);
-	emit(rv_lw(RV_REG_S5, store_offset - 24, RV_REG_SP), ctx);
-	emit(rv_lw(RV_REG_S6, store_offset - 28, RV_REG_SP), ctx);
-	emit(rv_lw(RV_REG_S7, store_offset - 32, RV_REG_SP), ctx);
-
-	emit(rv_addi(RV_REG_SP, RV_REG_SP, stack_adjust), ctx);
-
-	if (is_tail_call) {
-		/*
-		 * goto *(t0 + 4);
-		 * Skips first instruction of prologue which initializes tail
-		 * call counter. Assumes t0 contains address of target program,
-		 * see emit_bpf_tail_call.
-		 */
-		emit(rv_jalr(RV_REG_ZERO, RV_REG_T0, 4), ctx);
-	} else {
-		emit(rv_jalr(RV_REG_ZERO, RV_REG_RA, 0), ctx);
-	}
+// clang-format on
+@|__build_epilogue|
+// clang-format off
 }
 
 static bool is_stacked(s8 reg)
@@ -156,43 +152,33 @@ static bool is_stacked(s8 reg)
 static const s8 *bpf_get_reg64(const s8 *reg, const s8 *tmp,
 			       struct rv_jit_context *ctx)
 {
-	if (is_stacked(hi(reg))) {
-		emit(rv_lw(hi(tmp), hi(reg), RV_REG_FP), ctx);
-		emit(rv_lw(lo(tmp), lo(reg), RV_REG_FP), ctx);
-		reg = tmp;
-	}
-	return reg;
+// clang-format on
+@|bpf_get_reg64|
+// clang-format off
 }
 
 static void bpf_put_reg64(const s8 *reg, const s8 *src,
 			  struct rv_jit_context *ctx)
 {
-	if (is_stacked(hi(reg))) {
-		emit(rv_sw(RV_REG_FP, hi(reg), hi(src)), ctx);
-		emit(rv_sw(RV_REG_FP, lo(reg), lo(src)), ctx);
-	}
+// clang-format on
+@|bpf_put_reg64|
+// clang-format off
 }
 
 static const s8 *bpf_get_reg32(const s8 *reg, const s8 *tmp,
 			       struct rv_jit_context *ctx)
 {
-	if (is_stacked(lo(reg))) {
-		emit(rv_lw(lo(tmp), lo(reg), RV_REG_FP), ctx);
-		reg = tmp;
-	}
-	return reg;
+// clang-format on
+@|bpf_get_reg32|
+// clang-format off
 }
 
 static void bpf_put_reg32(const s8 *reg, const s8 *src,
 			  struct rv_jit_context *ctx)
 {
-	if (is_stacked(lo(reg))) {
-		emit(rv_sw(RV_REG_FP, lo(reg), lo(src)), ctx);
-		if (!ctx->prog->aux->verifier_zext)
-			emit(rv_sw(RV_REG_FP, hi(reg), RV_REG_ZERO), ctx);
-	} else if (!ctx->prog->aux->verifier_zext) {
-		emit(rv_mv(hi(reg), RV_REG_ZERO), ctx);
-	}
+// clang-format on
+@|bpf_put_reg32|
+// clang-format off
 }
 
 static void emit_jump_and_link(u8 rd, s32 rvoff, bool force_jalr,
@@ -214,49 +200,33 @@ static void emit_jump_and_link(u8 rd, s32 rvoff, bool force_jalr,
 static void emit_alu_i64(const s8 *dst, s32 imm,
 			 struct rv_jit_context *ctx, const u8 op)
 {
-	const s8 *tmp1 = bpf2rv32[TMP_REG_1];
-	const s8 *rd = bpf_get_reg64(dst, tmp1, ctx);
-
-@|SWITCH_emit_alu_i64|
-
-	bpf_put_reg64(dst, rd, ctx);
+// clang-format on
+@|emit_alu_i64|
+// clang-format off
 }
 
 static void emit_alu_i32(const s8 *dst, s32 imm,
 			 struct rv_jit_context *ctx, const u8 op)
 {
-	const s8 *tmp1 = bpf2rv32[TMP_REG_1];
-	const s8 *rd = bpf_get_reg32(dst, tmp1, ctx);
-
-@|SWITCH_emit_alu_i32|
-
-	bpf_put_reg32(dst, rd, ctx);
+// clang-format on
+@|emit_alu_i32|
+// clang-format off
 }
 
 static void emit_alu_r64(const s8 *dst, const s8 *src,
 			 struct rv_jit_context *ctx, const u8 op)
 {
-	const s8 *tmp1 = bpf2rv32[TMP_REG_1];
-	const s8 *tmp2 = bpf2rv32[TMP_REG_2];
-	const s8 *rd = bpf_get_reg64(dst, tmp1, ctx);
-	const s8 *rs = bpf_get_reg64(src, tmp2, ctx);
-
-@|SWITCH_emit_alu_r64|
-
-	bpf_put_reg64(dst, rd, ctx);
+// clang-format on
+@|emit_alu_r64|
+// clang-format off
 }
 
 static void emit_alu_r32(const s8 *dst, const s8 *src,
 			 struct rv_jit_context *ctx, const u8 op)
 {
-	const s8 *tmp1 = bpf2rv32[TMP_REG_1];
-	const s8 *tmp2 = bpf2rv32[TMP_REG_2];
-	const s8 *rd = bpf_get_reg32(dst, tmp1, ctx);
-	const s8 *rs = bpf_get_reg32(src, tmp2, ctx);
-
-@|SWITCH_emit_alu_r32|
-
-	bpf_put_reg32(dst, rd, ctx);
+// clang-format on
+@|emit_alu_r32|
+// clang-format off
 }
 
 static int emit_branch_r64(const s8 *src1, const s8 *src2, s32 rvoff,
@@ -280,7 +250,9 @@ static int emit_branch_r64(const s8 *src1, const s8 *src2, s32 rvoff,
 #define NO_JUMP(idx) (6 + (2 * (idx)))
 #define JUMP(idx) (2 + (2 * (idx)))
 
+// clang-format on
 @|SWITCH_emit_branch_r64|
+// clang-format off
 
 #undef NO_JUMP
 #undef JUMP
@@ -316,7 +288,9 @@ static int emit_bcc(u8 op, u8 rd, u8 rs, int rvoff, struct rv_jit_context *ctx)
 	 */
 	off = far ? 6 : (rvoff >> 1);
 
+// clang-format on
 @|SWITCH_emit_bcc|
+// clang-format off
 
 	if (far) {
 		e = ctx->ninsns;
@@ -354,29 +328,9 @@ static void emit_call(bool fixed, u64 addr, struct rv_jit_context *ctx)
 	u32 upper = ((u32)addr + (1 << 11)) >> 12;
 	u32 lower = addr & 0xfff;
 
-	/* R1-R4 already in correct registers---need to push R5 to stack. */
-	emit(rv_addi(RV_REG_SP, RV_REG_SP, -16), ctx);
-	emit(rv_sw(RV_REG_SP, 0, lo(r5)), ctx);
-	emit(rv_sw(RV_REG_SP, 4, hi(r5)), ctx);
-
-	/* Backup TCC. */
-	emit(rv_mv(RV_REG_TCC_SAVED, RV_REG_TCC), ctx);
-
-	/*
-	 * Use lui/jalr pair to jump to absolute address. Don't use emit_imm as
-	 * the number of emitted instructions should not depend on the value of
-	 * addr.
-	 */
-	emit(rv_lui(RV_REG_T1, upper), ctx);
-	emit(rv_jalr(RV_REG_RA, RV_REG_T1, lower), ctx);
-
-	/* Restore TCC. */
-	emit(rv_mv(RV_REG_TCC, RV_REG_TCC_SAVED), ctx);
-
-	/* Set return value and restore stack. */
-	emit(rv_mv(lo(r0), RV_REG_A0), ctx);
-	emit(rv_mv(hi(r0), RV_REG_A1), ctx);
-	emit(rv_addi(RV_REG_SP, RV_REG_SP, 16), ctx);
+// clang-format on
+@|BLOCK_emit_call|
+// clang-format off
 }
 
 static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
@@ -407,12 +361,13 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	emit_bcc(BPF_JGE, lo(idx_reg), RV_REG_T1, off, ctx);
 
 	/*
-	 * if ((temp_tcc = tcc - 1) < 0)
+	 * temp_tcc = tcc - 1;
+	 * if (tcc < 0)
 	 *   goto out;
 	 */
 	emit(rv_addi(RV_REG_T1, RV_REG_TCC, -1), ctx);
 	off = (tc_ninsn - (ctx->ninsns - start_insn)) << 2;
-	emit_bcc(BPF_JSLT, RV_REG_T1, RV_REG_ZERO, off, ctx);
+	emit_bcc(BPF_JSLT, RV_REG_TCC, RV_REG_ZERO, off, ctx);
 
 	/*
 	 * prog = array->ptrs[index];
@@ -436,7 +391,7 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 	if (is_12b_check(off, insn))
 		return -1;
 	emit(rv_lw(RV_REG_T0, off, RV_REG_T0), ctx);
-	emit(rv_mv(RV_REG_TCC, RV_REG_T1), ctx);
+	emit(rv_addi(RV_REG_TCC, RV_REG_T1, 0), ctx);
 	/* Epilogue jumps to *(t0 + 4). */
 	__build_epilogue(true, ctx);
 	return 0;
@@ -445,38 +400,9 @@ static int emit_bpf_tail_call(int insn, struct rv_jit_context *ctx)
 static int emit_load_r64(const s8 *dst, const s8 *src, s16 off,
 			 struct rv_jit_context *ctx, const u8 size)
 {
-	const s8 *tmp1 = bpf2rv32[TMP_REG_1];
-	const s8 *tmp2 = bpf2rv32[TMP_REG_2];
-	const s8 *rd = bpf_get_reg64(dst, tmp1, ctx);
-	const s8 *rs = bpf_get_reg64(src, tmp2, ctx);
-
-	emit_imm(RV_REG_T0, off, ctx);
-	emit(rv_add(RV_REG_T0, RV_REG_T0, lo(rs)), ctx);
-
-	switch (size) {
-	case BPF_B:
-		emit(rv_lbu(lo(rd), 0, RV_REG_T0), ctx);
-		if (!ctx->prog->aux->verifier_zext)
-			emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
-		break;
-	case BPF_H:
-		emit(rv_lhu(lo(rd), 0, RV_REG_T0), ctx);
-		if (!ctx->prog->aux->verifier_zext)
-			emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
-		break;
-	case BPF_W:
-		emit(rv_lw(lo(rd), 0, RV_REG_T0), ctx);
-		if (!ctx->prog->aux->verifier_zext)
-			emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
-		break;
-	case BPF_DW:
-		emit(rv_lw(lo(rd), 0, RV_REG_T0), ctx);
-		emit(rv_lw(hi(rd), 4, RV_REG_T0), ctx);
-		break;
-	}
-
-	bpf_put_reg64(dst, rd, ctx);
-	return 0;
+// clang-format on
+@|emit_load_r64|
+// clang-format off
 }
 
 static int emit_store_r64(const s8 *dst, const s8 *src, s16 off,
@@ -494,41 +420,25 @@ static int emit_store_r64(const s8 *dst, const s8 *src, s16 off,
 	emit_imm(RV_REG_T0, off, ctx);
 	emit(rv_add(RV_REG_T0, RV_REG_T0, lo(rd)), ctx);
 
-	switch (size) {
-	case BPF_B:
-		emit(rv_sb(RV_REG_T0, 0, lo(rs)), ctx);
-		break;
-	case BPF_H:
-		emit(rv_sh(RV_REG_T0, 0, lo(rs)), ctx);
-		break;
-	case BPF_W:
-		switch (mode) {
-		case BPF_MEM:
-			emit(rv_sw(RV_REG_T0, 0, lo(rs)), ctx);
-			break;
-		case BPF_XADD:
-			emit(rv_amoadd_w(RV_REG_ZERO, lo(rs), RV_REG_T0, 0, 0),
-			     ctx);
-			break;
-		}
-		break;
-	case BPF_DW:
-		emit(rv_sw(RV_REG_T0, 0, lo(rs)), ctx);
-		emit(rv_sw(RV_REG_T0, 4, hi(rs)), ctx);
-		break;
-	}
+// clang-format on
+@|SWITCH_emit_store_r64|
+// clang-format off
 
 	return 0;
 }
 
 static void emit_rev16(const s8 rd, struct rv_jit_context *ctx)
 {
-@|BLOCK_emit_rev16|
+// clang-format on
+@|emit_rev16|
+// clang-format off
 }
 
 static void emit_rev32(const s8 rd, struct rv_jit_context *ctx)
 {
-@|BLOCK_emit_rev32|
+// clang-format on
+@|emit_rev32|
+// clang-format off
 }
 
 static void emit_zext64(const s8 *dst, struct rv_jit_context *ctx)
@@ -537,7 +447,7 @@ static void emit_zext64(const s8 *dst, struct rv_jit_context *ctx)
 	const s8 *tmp1 = bpf2rv32[TMP_REG_1];
 
 	rd = bpf_get_reg64(dst, tmp1, ctx);
-	emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
+	emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
 	bpf_put_reg64(dst, rd, ctx);
 }
 
@@ -670,7 +580,7 @@ int bpf_jit_emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
 			/* Fallthrough. */
 		case 32:
 			if (!ctx->prog->aux->verifier_zext)
-				emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
+				emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
 			break;
 		case 64:
 			/* Do nothing. */
@@ -686,35 +596,9 @@ int bpf_jit_emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
 
 	case BPF_ALU | BPF_END | BPF_FROM_BE:
 	{
-		const s8 *rd = bpf_get_reg64(dst, tmp1, ctx);
-
-		switch (imm) {
-		case 16:
-			emit_rev16(lo(rd), ctx);
-			if (!ctx->prog->aux->verifier_zext)
-				emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
-			break;
-		case 32:
-			emit_rev32(lo(rd), ctx);
-			if (!ctx->prog->aux->verifier_zext)
-				emit(rv_mv(hi(rd), RV_REG_ZERO), ctx);
-			break;
-		case 64:
-			/* Swap upper and lower halves. */
-			emit(rv_mv(RV_REG_T0, lo(rd)), ctx);
-			emit(rv_mv(lo(rd), hi(rd)), ctx);
-			emit(rv_mv(hi(rd), RV_REG_T0), ctx);
-
-			/* Swap each half. */
-			emit_rev32(lo(rd), ctx);
-			emit_rev32(hi(rd), ctx);
-			break;
-		default:
-			pr_err("bpf-jit: BPF_END imm %d invalid\n", imm);
-			return -1;
-		}
-
-		bpf_put_reg64(dst, rd, ctx);
+// clang-format on
+@|BLOCK_emit_be|
+// clang-format off
 		break;
 	}
 
@@ -877,49 +761,9 @@ notsupported:
 
 void bpf_jit_build_prologue(struct rv_jit_context *ctx)
 {
-	/* Make space to save 9 registers: ra, fp, s1--s7. */
-	int stack_adjust = 9 * sizeof(u32), store_offset, bpf_stack_adjust;
-	const s8 *fp = bpf2rv32[BPF_REG_FP];
-	const s8 *r1 = bpf2rv32[BPF_REG_1];
-
-	bpf_stack_adjust = round_up(ctx->prog->aux->stack_depth, 16);
-	stack_adjust += bpf_stack_adjust;
-
-	store_offset = stack_adjust - 4;
-
-	stack_adjust += 4 * BPF_JIT_SCRATCH_REGS;
-
-	/*
-	 * The first instruction sets the tail-call-counter (TCC) register.
-	 * This instruction is skipped by tail calls.
-	 */
-	emit(rv_addi(RV_REG_TCC, RV_REG_ZERO, MAX_TAIL_CALL_CNT), ctx);
-
-	emit(rv_addi(RV_REG_SP, RV_REG_SP, -stack_adjust), ctx);
-
-	/* Save callee-save registers. */
-	emit(rv_sw(RV_REG_SP, store_offset - 0, RV_REG_RA), ctx);
-	emit(rv_sw(RV_REG_SP, store_offset - 4, RV_REG_FP), ctx);
-	emit(rv_sw(RV_REG_SP, store_offset - 8, RV_REG_S1), ctx);
-	emit(rv_sw(RV_REG_SP, store_offset - 12, RV_REG_S2), ctx);
-	emit(rv_sw(RV_REG_SP, store_offset - 16, RV_REG_S3), ctx);
-	emit(rv_sw(RV_REG_SP, store_offset - 20, RV_REG_S4), ctx);
-	emit(rv_sw(RV_REG_SP, store_offset - 24, RV_REG_S5), ctx);
-	emit(rv_sw(RV_REG_SP, store_offset - 28, RV_REG_S6), ctx);
-	emit(rv_sw(RV_REG_SP, store_offset - 32, RV_REG_S7), ctx);
-
-	/* Set fp: used as the base address for stacked BPF registers. */
-	emit(rv_addi(RV_REG_FP, RV_REG_SP, stack_adjust), ctx);
-
-	/* Set up BPF stack pointer. */
-	emit(rv_addi(lo(fp), RV_REG_SP, bpf_stack_adjust), ctx);
-	emit(rv_mv(hi(fp), RV_REG_ZERO), ctx);
-
-	/* Set up context pointer. */
-	emit(rv_mv(lo(r1), RV_REG_A0), ctx);
-	emit(rv_mv(hi(r1), RV_REG_ZERO), ctx);
-
-	ctx->stack_size = stack_adjust;
+// clang-format on
+@|bpf_jit_build_prologue|
+// clang-format off
 }
 
 void bpf_jit_build_epilogue(struct rv_jit_context *ctx)

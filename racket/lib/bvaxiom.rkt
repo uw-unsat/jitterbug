@@ -3,49 +3,81 @@
 (require
   (prefix-in core: serval/lib/core))
 
-(provide assumptions bvmulhu-uf bvmul-uf bvudiv-uf bvurem-uf)
+(provide (all-defined-out))
 
-; Replace bvmul/bvudiv/bvurem with UFs, as they are expensive to
-; reason about in SMT.
+
+; Replace bvmul/bvudiv/bvurem with UFs and theorems (proved in lemmas.lean),
+; as they are expensive to reason about in SMT.
 
 (define assumptions (make-parameter null))
+
+(define (assume x) (assumptions (cons x (assumptions))))
 
 (define (commute f x y)
   (define e (equal? (f x y) (f y x)))
   (assumptions (cons e (assumptions)))
   (f x y))
 
-; Axiomatize bvmul using theorems (proved in lemmas.lean).
 
-(define (bvmulhu-uf x y)
+; Axiom shared by 32- and 64-bit JITs.
+
+; x % y = x - (x / y) * y
+; needed by ISAs without a modulo instruction (e.g., arm64)
+(define (bvurem-uf x y)
+  (bvsub x ((core:bvmul-proc) ((core:bvudiv-proc) x y) y)))
+
+
+; Axioms for 64-bit JITs.
+
+(define (bvmulhu-uf/64 x y)
+  (define-symbolic bvmulhu64 (~> (bitvector 64) (bitvector 64) (bitvector 64)))
+  (define-symbolic bvmulhu32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
+  (case (core:bv-size x)
+    [(64) (commute bvmulhu64 x y)]
+    [(32) (commute bvmulhu32 x y)]
+    [else (exit 1)]))
+
+(define (bvmul-uf/64 x y)
+  (define-symbolic bvmul64 (~> (bitvector 64) (bitvector 64) (bitvector 64)))
+  (define-symbolic bvmul32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
+  (case (core:bv-size x)
+    [(64) (commute bvmul64 x y)]
+    [(32) (commute bvmul32 x y)]
+    [else (exit 1)]))
+
+(define (bvudiv-uf/64 x y)
+  (define-symbolic bvudiv64 (~> (bitvector 64) (bitvector 64) (bitvector 64)))
+  (define-symbolic bvudiv32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
+  (case (core:bv-size x)
+    [(64) (bvudiv64 x y)]
+    [(32) (bvudiv32 x y)]
+    [else (exit 1)]))
+
+
+; Axioms for 32-bit JITs.
+
+(define (bvmulhu-uf/32 x y)
   (define-symbolic bvmulhu32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
   (case (core:bv-size x)
     ; bvmulhu is commutative
     [(32) (commute bvmulhu32 x y)]
     [else (exit 1)]))
 
-(define (bvmul-uf x y)
+(define (bvmul-uf/32 x y)
   (define-symbolic bvmul32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
   (case (core:bv-size x)
     ; 64-bit bvmul can be decomposed into 32-bit operations
-    [(64) (concat (bvadd (bvmulhu-uf (extract 31 0 x) (extract 31 0 y))
-                         (bvmul-uf (extract 31 0 x) (extract 63 32 y))
-                         (bvmul-uf (extract 63 32 x) (extract 31 0 y)))
-                  (bvmul-uf (extract 31 0 x) (extract 31 0 y)))]
+    [(64) (concat (bvadd ((core:bvmulhu-proc) (extract 31 0 x) (extract 31 0 y))
+                         ((core:bvmul-proc) (extract 31 0 x) (extract 63 32 y))
+                         ((core:bvmul-proc) (extract 63 32 x) (extract 31 0 y)))
+                  ((core:bvmul-proc) (extract 31 0 x) (extract 31 0 y)))]
     ; bvmul is commutative
     [(32) (commute bvmul32 x y)]
     [else (exit 1)]))
 
-(define (bvudiv-uf x y)
+(define (bvudiv-uf/32 x y)
   (define-symbolic bvudiv32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
   (case (core:bv-size x)
     ; no 64-bit bvudiv
     [(32) (bvudiv32 x y)]
-    [else (exit 1)]))
-
-(define (bvurem-uf x y)
-  (define-symbolic bvurem32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
-  (case (core:bv-size x)
-    ; no 64-bit bvurem
-    [(32) (bvurem32 x y)]
     [else (exit 1)]))

@@ -13,6 +13,7 @@
   rosette/lib/angelic
   "bpf-common.rkt"
   "riscv-common.rkt"
+  "spec/bpf.rkt"
 )
 
 (provide (all-defined-out))
@@ -60,19 +61,49 @@
 (define (interpret-imm imm-template bpf-imm)
   imm-template)
 
+; For scalability only use BPF specification for bpf regs r0 and r1.
+(define (synthesis-select-bpf-regs r)
+  (list 'r0 'r1))
+
+(struct conditional (condition iftrue iffalse) #:transparent)
+
+(define (interpret-conditional conditional bpf-dst bpf-src bpf-imm ctx)
+  (define condition (conditional-condition conditional))
+  (define iftrue (conditional-iftrue conditional))
+  (define iffalse (conditional-iffalse conditional))
+  (case condition
+    [(alwaystrue) (for ([i iftrue]) (emit (make-insn i bpf-dst bpf-src bpf-imm) ctx))]
+    [(src-dst-alias)
+      (if (equal? bpf-dst bpf-src)
+          (for ([i iftrue]) (emit (make-insn i bpf-dst bpf-src bpf-imm) ctx))
+          (for ([i iffalse]) (emit (make-insn i bpf-dst bpf-src bpf-imm) ctx)))]))
+
+(define (choose-insn-list length)
+  (vector-map (lambda (i) (choose-insn)) (list->vector (range length))))
+
+(define (choose-conditional #:size size)
+  (define condition (choose* 'alwaystrue 'src-dst-alias))
+  (conditional condition
+    (choose-insn-list size)
+    (choose-insn-list size)))
 
 (define (synthesize-op op #:size size #:target target)
 
   (printf "Synthesizing for op ~v with size ~v\n" op size)
 
-  ; Make a JIT of length "size"
-  (define jit (vector-map (lambda (i) (choose-insn)) (list->vector (range size))))
+  ; Make a JIT of a particular size
+  (define jit (choose-conditional #:size size))
 
-  (define (run-jit insn code bpf-dst bpf-src off bpf-imm ctx)
+  (define (emit_insn insn-idx insn next-insn ctx)
     ; For each instruction in our JIT template,
     ; interpret it and then emit it.
-    (for ([i jit])
-      (emit (make-insn i bpf-dst bpf-src bpf-imm) ctx))
+    (define code (bpf:insn-code insn))
+    (define bpf-dst (bpf:insn-dst insn))
+    (define bpf-src (bpf:insn-src insn))
+    (define off (bpf:insn-off insn))
+    (define bpf-imm (bpf:insn-imm insn))
+
+    (interpret-conditional jit bpf-dst bpf-src bpf-imm ctx)
     (context-insns ctx))
 
   ; "bpf-jit-specification" will fill s with symbolics it defines,
@@ -84,9 +115,8 @@
   (define asserted (with-asserts-only
     (bpf-jit-specification
       op
-      (struct-copy bpf-target target [jit-function run-jit])
-      #:synthesis #t
-      #:add-symbolics (lambda (n) (set! s (append s n)))
+      (struct-copy bpf-target target [emit-insn emit_insn]
+                                     [select-bpf-regs synthesis-select-bpf-regs])
       #:assumptions (thunk null))))
 
   ; Sanity check
@@ -94,7 +124,7 @@
 
   (define sol
     (synthesize
-    #:forall s
+    #:forall (bpf-symbolics)
     #:guarantee (assert (apply && asserted))))
 
   (if (sat? sol)

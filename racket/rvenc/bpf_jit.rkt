@@ -1,5 +1,14 @@
 #lang rosette
 
+; This file is translated and adapted from arch/riscv/net/bpf_jit.h,
+; which is licensed under:
+;
+; SPDX-License-Identifier: GPL-2.0
+;
+; Common functionality for RV32 and RV64 BPF JIT compilers
+;
+; Copyright (c) 2019 Björn Töpel <bjorn.topel@gmail.com>
+
 (require
   (only-in "../lib/emit.rkt" 0x define-rvenc)
   (prefix-in riscv: serval/riscv/base))
@@ -20,7 +29,9 @@
 ; instruction formats
 
 (define (rv_r_insn funct7 rs2 rs1 funct3 rd opcode)
-  (bvor (bvshl (bv funct7 32) (bv 25 32))
+  (when (integer? funct7)
+    (set! funct7 (bv funct7 32)))
+  (bvor (bvshl (zero-extend funct7 (bitvector 32)) (bv 25 32))
         (bvshl (enc-reg rs2) (bv 20 32))
         (bvshl (enc-reg rs1) (bv 15 32))
         (bvshl (bv funct3 32) (bv 12 32))
@@ -74,7 +85,10 @@
         (bv opcode 32)))
 
 (define (rv_amo_insn funct5 aq rl rs2 rs1 funct3 rd opcode)
-  (define funct7 (bitwise-ior (arithmetic-shift funct5 2) (arithmetic-shift aq 1) rl))
+  (define funct7
+    (bvor (bvshl (bv funct5 8) (bv 2 8))
+          (bvshl (zero-extend aq (bitvector 8)) (bv 1 8))
+          (zero-extend rl (bitvector 8))))
   (rv_r_insn funct7 rs2 rs1 funct3 rd opcode))
 
 

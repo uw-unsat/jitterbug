@@ -24,6 +24,11 @@
   (bveq (bvmulhu x y)
         (bvmulhu y x))))
 
+; x % y = x - (x / y) * y
+(verify (assert
+  (bveq (bvurem x y)
+        (bvsub x (bvmul (bvudiv x y) y)))))
+
 ; bvmul decomposition
 #|
 (verify (assert

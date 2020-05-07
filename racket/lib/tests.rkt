@@ -1,6 +1,9 @@
 #lang racket
 
-(require serval/lib/unittest)
+(require
+  "patch.rkt"
+  serval/lib/solver
+  serval/lib/unittest)
 
 (provide (all-defined-out))
 
@@ -10,12 +13,30 @@
 (define (jit-skip-case code proc)
   (test-case+ (format "SKIP ~s" code) (void)))
 
+(define (make-jit-bug-case check)
+  (lambda (code proc)
+    (test-case+ (format "BUG ~s" code) ;(with-jit-bug (proc code))))
+      (let ([info #f])
+        (with-handlers ([exn:test:check? (lambda (e) (set! info (exn:test:check-stack e)))])
+          (with-jit-bug (proc code)))
+        (check-pred list? info "missing bug")
+        ; invoke extra checker
+        (check (map (lambda (x) (cons (check-info-name x) (check-info-value x))) info))))))
+
+(define-syntax (test-bugs stx)
+  (syntax-case stx ()
+    [(_ name proc [code check] ...)
+     (syntax/loc stx
+       (run-tests (test-suite+ name
+         ((make-jit-bug-case check) code proc) ...)))]))
+
 (define-syntax (jit-verify stx)
   (syntax-case stx ()
     [(_ name proc selector code ...)
      (syntax/loc stx
-       (run-tests (test-suite+ name
-         ((selector code) code proc) ...)))]))
+       (with-prefer-boolector
+         (run-tests (test-suite+ name
+           ((selector code) code proc) ...))))]))
 
 (define (verify-all code)
   jit-verify-case)
@@ -24,6 +45,12 @@
   (if (or (member 'BPF_DIV code) (member 'BPF_MOD code))
       jit-skip-case
       jit-verify-case))
+
+(define (verify-only-in lst)
+  (lambda (code)
+    (if (ormap (lambda (x) (member x code)) lst)
+        jit-verify-case
+        jit-skip-case)))
 
 (define (verify-alu32-k name proc #:selector [selector verify-all])
   (jit-verify name proc selector
@@ -157,3 +184,57 @@
     '(BPF_JMP BPF_JSLE BPF_X)
     '(BPF_JMP BPF_JSET BPF_X)
 ))
+
+(define (skip-tail-call code)
+  (if (member 'BPF_TAIL_CALL code)
+      jit-skip-case
+      jit-verify-case))
+
+(define (verify-jmp-call name proc #:selector [selector skip-tail-call])
+  (jit-verify name proc selector
+    '(BPF_JMP BPF_CALL)
+    '(BPF_JMP BPF_TAIL_CALL)
+    '(BPF_JMP BPF_EXIT)))
+
+(define (verify-ld-imm name proc #:selector [selector verify-all])
+  (jit-verify name proc selector
+    '(BPF_LD BPF_IMM BPF_DW)))
+
+(define (verify-ldx-mem name proc #:selector [selector verify-all])
+  (jit-verify name proc selector
+    '(BPF_LDX BPF_MEM BPF_B)
+    '(BPF_LDX BPF_MEM BPF_H)
+    '(BPF_LDX BPF_MEM BPF_W)
+    '(BPF_LDX BPF_MEM BPF_DW)))
+
+(define (verify-st-mem name proc #:selector [selector verify-all])
+  (jit-verify name proc selector
+    '(BPF_ST BPF_MEM BPF_B)
+    '(BPF_ST BPF_MEM BPF_H)
+    '(BPF_ST BPF_MEM BPF_W)
+    '(BPF_ST BPF_MEM BPF_DW)))
+
+(define (verify-stx-mem name proc #:selector [selector verify-all])
+  (jit-verify name proc selector
+    '(BPF_STX BPF_MEM BPF_B)
+    '(BPF_STX BPF_MEM BPF_H)
+    '(BPF_STX BPF_MEM BPF_W)
+    '(BPF_STX BPF_MEM BPF_DW)))
+
+(define (skip-dw-mem code)
+  (if (member 'BPF_DW code)
+      jit-skip-case
+      jit-verify-case))
+
+(define (verify-stx-xadd name proc #:selector [selector verify-all])
+  (jit-verify name proc selector
+    '(BPF_STX BPF_XADD BPF_W)
+    '(BPF_STX BPF_XADD BPF_DW)))
+
+(define (verify-prologue name proc)
+  (jit-verify name proc verify-all
+    'PROLOGUE))
+
+(define (verify-epilogue name proc)
+  (jit-verify name proc verify-all
+    'EPILOGUE))

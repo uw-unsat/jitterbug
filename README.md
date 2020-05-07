@@ -1,17 +1,42 @@
 # Linux eBPF JIT verification
 
 This repository contains a tool for formally verifying the Linux
-BPF JITs that builds on our verification framework [Serval].
+kernel BPF JITs that builds on our verification framework [Serval].
+We have used this tool to aid the development in the following ways:
 
-We used this tool to help develop the RV32 BPF JIT (in
-`arch/riscv/net/bpf_jit_comp32.c`).
+- develop the RV32 JIT:
+  + [riscv, bpf: Add RV32G eBPF JIT](https://git.kernel.org/linus/5f316b65e99f)
 
-We also used this tool to find the bugs in the RV64 BPF JIT
-([1e692f09e091]), and also to review the patches that add support
-for far jumps and branching:
+- review the patches that add support for far jumps and branching in RV64:
+  + [riscv, bpf: add support for far branching](https://lore.kernel.org/bpf/20191209173136.29615-3-bjorn.topel@gmail.com/T/#u)
+  + [riscv, bpf: add support for far jumps and exits](https://lore.kernel.org/bpf/20191209173136.29615-4-bjorn.topel@gmail.com/T/#u)
 
-- [[PATCH bpf-next 2/8] riscv, bpf: add support for far branching](https://lore.kernel.org/bpf/20191209173136.29615-3-bjorn.topel@gmail.com/T/#u)
-- [[PATCH bpf-next 3/8] riscv, bpf: add support for far jumps and exits](https://lore.kernel.org/bpf/20191209173136.29615-4-bjorn.topel@gmail.com/T/#u)
+- find bugs, validate patches, and write test cases:
+  + [arm, bpf: Fix bugs with ALU64 {RSH, ARSH} BPF_K shift by 0](https://git.kernel.org/linus/bb9562cf5c67)
+  + [arm, bpf: Fix offset overflow for BPF_MEM BPF_DW](https://git.kernel.org/linus/4178417cc535)
+  + [bpf, riscv: clear high 32 bits for ALU32 add/sub/neg/lsh/rsh/arsh](https://git.kernel.org/linus/1e692f09e091)
+  + [bpf, riscv: Fix tail call count off by one in RV32 BPF JIT](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=3f2eaebb5450b417aa119f47c9b805db311ad3b8)
+  + [bpf, riscv: Fix stack layout of JITed code on RV32](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=91f658587a962378a410cc7dc90e122a4ccd7cf3)
+  + [riscv, bpf: Fix offset range checking for auipc+jalr on RV64](https://git.kernel.org/linus/489553dd13a8)
+  + [bpf, x32: Fix bug with ALU64 {LSH, RSH, ARSH} BPF_K shift by 0](https://git.kernel.org/linus/6fa632e719ee)
+  + [bpf, x32: Fix bug with ALU64 {LSH, RSH, ARSH} BPF_X shift by 0](https://git.kernel.org/linus/68a8357ec15b)
+  + [bpf, x32: Fix bug with JMP32 JSET BPF_X checking upper bits](https://git.kernel.org/linus/80f1f8503635)
+  + [bpf, x86_32: Fix incorrect encoding in BPF_LDX zero-extension](https://git.kernel.org/linus/5fa9a98fb103)
+  + [bpf, x86_32: Fix clobbering of dst for BPF_JSET](https://git.kernel.org/linus/50fe7ebb6475)
+  + [bpf, x86: Fix encoding for lower 8-bit registers in BPF_STX BPF_B](https://git.kernel.org/linus/aee194b14dd2)
+  + [bpf, selftests: Add test for BPF_STX BPF_B storing R10](https://git.kernel.org/linus/d2b6c3ab70db)
+  + [selftests: bpf: Add test for JMP32 JSET BPF_X with upper bits set](https://git.kernel.org/linus/93e5fbb18cec)
+  + [selftests: bpf: add tests for shifts by zero](https://git.kernel.org/linus/ac8786c72eba)
+
+- add optimizations:
+  + [bpf, arm: Optimize ALU64 ARSH X using orrpl conditional instruction](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=cf48db69bdfad2930b95fd51d64444e5a7b469ae)
+  + [bpf, arm: Optimize ALU ARSH K using asr immediate instruction](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=c648c9c7429e979ca081359f39b6902aed92d490)
+  + [bpf, riscv: Enable zext optimization for more RV64G ALU ops](https://git.kernel.org/linus/46dd3d7d287b)
+  + [Merge branch 'bpf-rv64-jit'](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=a085a1eeea5ed4ae7aa0c19031449ade145110fc)
+    + [bpf, riscv: Enable missing verifier_zext optimizations on RV64](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=0224b2acea0f9e3908d33e27b2dcb4e04686e997)
+    + [bpf, riscv: Optimize FROM_LE using verifier_zext on RV64](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=21a099abb765c3754689e1f7ca4536fa560112d0)
+    + [bpf, riscv: Optimize BPF_JMP BPF_K when imm == 0 on RV64](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=ca349a6a104e58479defdc08ce56472a48f7cb81)
+    + [bpf, riscv: Optimize BPF_JSET BPF_K using andi on RV64](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=073ca6a0369e09c586a103e665f2dd67f1c71444)
 
 ## How to install dependencies
 
@@ -34,48 +59,28 @@ raco pkg install --auto ./serval
 
 ## Directory structure
 
-`arch/riscv/net/bpf_jit.h` and `arch/riscv/net/bpf_jit_core.c`
-contains the common code shared by the rv32 and rv64 JITs.
+- `arch/` contains the C code of the BPF JITs from the Linux kernel.
 
-`arch/riscv/net/bpf_jit_comp64.c` contains the C implementation of
-the BPF JIT for rv64 from Linux.
+- `racket/<arch>/` contains the Racket implementations of the BPF JITs
+  that correspond to the C code under `arch/`.
+  + `racket/<arch>/spec.rkt` contains the specification for `<arch>`.
+  + `racket/<arch>/synthesis.rkt` (if present) contains the synthesis
+    infrastructure and sketch for the BPF JIT for `<arch>`.
+  + `racket/rv32/bpf_jit_comp32.c.tmpl` is a template used with the
+    `racket/rv32/bpf_jit_comp32.rkt` to generate the final C
+    implementation.
 
-`arch/riscv/net/bpf_jit_comp32.c` contains a C implementation of
-the BPF JIT for rv32. It is generated from the Racket implementation
-under `racket/rv32/`.
+- `racket/lib/` contains the BPF JIT verification infrastructure.
+  + `racket/lib/bpf-common.rkt` contains the BPF JIT correctness
+     specification and other common BPF functionality.
+  + `racket/lib/riscv-common.rkt` provides features specific
+     to the JIT for the RISC-V ISA.
+  + `racket/lib/bvaxiom.rkt` axiomatizes bvmul/bvudiv/bvurem.
+  + `racket/lib/lemmas.lean` contains the axiomatization of bitvector
+     operations in Lean.
 
-`racket/lib/bpf-common.rkt` contains the BPF JIT correctness
-specification and other common BPF functionality.
-
-`racket/lib/riscv-common.rkt` provides features specific
-to the JIT for the RISC-V ISA.
-
-`racket/lib/bvaxiom.rkt` axiomatizes bvmul/bvudiv/bvurem.
-
-`racket/lib/lemmas.lean` contains the axiomatization of bitvector
-operations in Lean.
-
-`racket/rv64/bpf_jit_comp64.rkt` is a manual translation
-of the C implementation of the rv64 JIT into Racket for verification.
-
-`racket/rv64/spec.rkt` contains the specification of the BPF JIT
-for rv64.
-
-`racket/rv64/synthesis.rkt` contains the synthesis infrastructure
-and sketch for the BPF JIT for rv64.
-
-`racket/rv32/bpf_jit_comp32.rkt` is a Racket implementation of the
-BPF JIT for rv32. It is used with `racket/rv32/bpf_jit_comp32.c.tmpl`
-to generate the final C implementation.
-
-`racket/rv32/spec.rkt` contains the specification of the BPF JIT
-for rv32.
-
-`racket/rv32/synthesis.rkt` contains the synthesis infrastructure
-and sketch for the BPF JIT for rv32.
-
-`racket/test/` contains verification and synthesis test cases for
-different classes of instructions.
+- `racket/test/` contains verification and synthesis test cases for
+  different classes of instructions.
 
 ## Running verification
 
@@ -292,13 +297,11 @@ The verification proves the JIT correct for individual BPF instructions
 at a time.  There are several properties of the JIT that are currently
 not specified or verified:
 
-- Memory instructions (e.g. `BPF_LD`, `BPF_ST`).
-
 - JIT prologue and epilogue.
 
-- 64-bit immediate load (`BPF_LD | BPF_IMM | BPF_DW`).
-
-- Call instructions (e.g., `BPF_CALL`, `BPF_TAIL_CALL`).
+- Limited support for call/exit instructions:
+  + `BPF_CALL`, `BPF_TAIL_CALL`, and `BPF_EXIT` are supported on riscv32 and riscv64;
+  + `BPF_CALL` and `BPF_EXIT` are supported on arm32 and arm64.
 
 The verification makes the following assumptions:
 
@@ -307,10 +310,9 @@ The verification makes the following assumptions:
 - The BPF program has passed the kernel's BPF verifier: e.g., it
   assumes no divide-by-zero or out-of-range shifts.
 
-- The number of BPF instructions is less than 16M and the
-  generated RISC-V image is smaller than 128MB.
-  These bounds can be increased but will increase overall verification
-  time for jumps.
+- The number of BPF instructions is less than 16M and the generated
+  RISC-V image is smaller than 128MB.  These bounds can be increased
+  but will increase overall verification time for jumps.
 
 - The translation between the verified JIT in Racket and the C code
   is trusted. Any mismatches in this translation can mean there are
@@ -319,4 +321,4 @@ The verification makes the following assumptions:
 [Boolector]: https://boolector.github.io
 [Racket]: https://racket-lang.org
 [Serval]: https://unsat.cs.washington.edu/projects/serval/
-[1e692f09e091]: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=1e692f09e091
+[1e692f09e091]: https://git.kernel.org/linus/1e692f09e091

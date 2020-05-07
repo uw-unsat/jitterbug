@@ -28,6 +28,12 @@
            'x20 'x21 'x22 'x23 'x24 'x25 'x26 'x27 'x28 'x29
            'x30 'x31))
 
+(define (choose-aq)
+  (core:make-arg (bitvector 1)))
+
+(define (choose-rl)
+  (core:make-arg (bitvector 1)))
+
 (define (choose-imm11_0)
   (core:make-arg (bitvector 12)))
 
@@ -97,7 +103,7 @@
     (enc-verify-case rv_lbu (choose-reg) (choose-imm11_0) (choose-reg))
     (enc-verify-case rv_lhu (choose-reg) (choose-imm11_0) (choose-reg))
     (enc-verify-case rv_lw (choose-reg) (choose-imm11_0) (choose-reg))
-    ; (enc-verify-case rv_amoadd_w (choose-reg) (choose-reg) (choose-reg) (choose-aq) (choose-rl))
+    (enc-verify-case rv_amoadd_w (choose-reg) (choose-reg) (choose-reg) (choose-aq) (choose-rl))
 
     ; RV64-only instructions
     (enc-verify-case rv_slli (choose-reg) (choose-reg) (choose-shamt64))
@@ -118,7 +124,7 @@
     (enc-verify-case rv_sd (choose-reg) (choose-imm11_0) (choose-reg))
     (enc-verify-case rv_lwu (choose-reg) (choose-imm11_0) (choose-reg))
     (enc-verify-case rv_ld (choose-reg) (choose-imm11_0) (choose-reg))
-    ; (enc-verify-case rv_amoadd_d (choose-reg) (choose-reg) (choose-reg) (choose-aq) (choose-rl))
+    (enc-verify-case rv_amoadd_d (choose-reg) (choose-reg) (choose-reg) (choose-aq) (choose-rl))
 ))
 
 (module+ test

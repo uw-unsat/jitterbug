@@ -158,6 +158,19 @@ static bool is_ereg(u32 reg)
 			     BIT(BPF_REG_AX));
 }
 
+/*
+ * is_ereg_8l() == true if BPF register 'reg' is mapped to access x86-64
+ * lower 8-bit registers dil,sil,bpl,spl,r8b..r15b, which need extra byte
+ * of encoding. al,cl,dl,bl have simpler encoding.
+ */
+static bool is_ereg_8l(u32 reg)
+{
+	return is_ereg(reg) ||
+	    (1 << reg) & (BIT(BPF_REG_1) |
+			  BIT(BPF_REG_2) |
+			  BIT(BPF_REG_FP));
+}
+
 static bool is_axreg(u32 reg)
 {
 	return reg == BPF_REG_0;
@@ -598,9 +611,8 @@ static void emit_stx(u8 **pprog, u32 size, u32 dst_reg, u32 src_reg, int off)
 	switch (size) {
 	case BPF_B:
 		/* Emit 'mov byte ptr [rax + off], al' */
-		if (is_ereg(dst_reg) || is_ereg(src_reg) ||
-		    /* We have to add extra byte for x86 SIL, DIL regs */
-		    src_reg == BPF_REG_1 || src_reg == BPF_REG_2)
+		if (is_ereg(dst_reg) || is_ereg_8l(src_reg))
+			/* Add extra byte for eregs or SIL,DIL,BPL in src_reg */
 			EMIT2(add_2mod(0x40, dst_reg, src_reg), 0x88);
 		else
 			EMIT1(0x88);
@@ -1449,23 +1461,6 @@ static int emit_cond_near_jump(u8 **pprog, void *func, void *ip, u8 jmp_cond)
 	return 0;
 }
 
-static int emit_mod_ret_check_imm8(u8 **pprog, int value)
-{
-	u8 *prog = *pprog;
-	int cnt = 0;
-
-	if (!is_imm8(value))
-		return -EINVAL;
-
-	if (value == 0)
-		EMIT2(0x85, add_2reg(0xC0, BPF_REG_0, BPF_REG_0));
-	else
-		EMIT3(0x83, add_1reg(0xF8, BPF_REG_0), value);
-
-	*pprog = prog;
-	return 0;
-}
-
 static int invoke_bpf(const struct btf_func_model *m, u8 **pprog,
 		      struct bpf_tramp_progs *tp, int stack_size)
 {
@@ -1485,7 +1480,7 @@ static int invoke_bpf_mod_ret(const struct btf_func_model *m, u8 **pprog,
 			      u8 **branches)
 {
 	u8 *prog = *pprog;
-	int i;
+	int i, cnt = 0;
 
 	/* The first fmod_ret program will receive a garbage return value.
 	 * Set this to 0 to avoid confusing the program.
@@ -1496,16 +1491,12 @@ static int invoke_bpf_mod_ret(const struct btf_func_model *m, u8 **pprog,
 		if (invoke_bpf_prog(m, &prog, tp->progs[i], stack_size, true))
 			return -EINVAL;
 
-		/* Generate a branch:
-		 *
-		 * if (ret !=  0)
+		/* mod_ret prog stored return value into [rbp - 8]. Emit:
+		 * if (*(u64 *)(rbp - 8) !=  0)
 		 *	goto do_fexit;
-		 *
-		 * If needed this can be extended to any integer value which can
-		 * be passed by user-space when the program is loaded.
 		 */
-		if (emit_mod_ret_check_imm8(&prog, 0))
-			return -EINVAL;
+		/* cmp QWORD PTR [rbp - 0x8], 0x0 */
+		EMIT4(0x48, 0x83, 0x7d, 0xf8); EMIT1(0x00);
 
 		/* Save the location of the branch and Generate 6 nops
 		 * (4 bytes for an offset and 2 bytes for the jump) These nops

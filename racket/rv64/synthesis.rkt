@@ -11,6 +11,7 @@
   rosette/lib/synthax
   rosette/lib/angelic
   "../lib/bpf-common.rkt"
+  "../lib/spec/bpf.rkt"
   "../lib/riscv-common.rkt"
   serval/lib/solver
   "../lib/rvsynth.rkt"
@@ -33,8 +34,8 @@
     [(zero) 'zero]
     [(tmp) 't0]
     [(tmp2) 't1]
-    [(src) (list-ref regmap (bpf:reg-idx src))]
-    [(dst) (list-ref regmap (bpf:reg-idx dst))]))
+    [(src) (list-ref regmap (bpf:reg->idx src))]
+    [(dst) (list-ref regmap (bpf:reg->idx dst))]))
 
 (define (render-reg r)
   (case r
@@ -72,7 +73,6 @@
       (when j (k j)))
     #f))
 
-
 (define (synth-and-print op)
   (define jit (synth-jit-loop op #:maxsize 8))
   (if jit
@@ -89,6 +89,5 @@
             [src-regs rv64-src-regs]
             [interpret-reg rv64-interpret-reg]
             [current-bitwidth #f]
-            [core:target-endian 'little]
             [core:target-pointer-bitwidth 64])
         (synth-and-print code))))))

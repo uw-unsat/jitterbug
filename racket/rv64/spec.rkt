@@ -1,11 +1,13 @@
 #lang rosette
 
 (require
+  "bpf_jit_comp64.rkt"
+  "../lib/linux.rkt"
+  "../lib/hybrid-memory.rkt"
   "../lib/bpf-common.rkt"
   "../lib/riscv-common.rkt"
-  serval/lib/solver
-  "bpf_jit_comp64.rkt"
-  rosette/lib/angelic
+  "../lib/spec/riscv.rkt"
+  "../lib/spec/bpf.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/base)
@@ -13,94 +15,98 @@
 
 (provide (all-defined-out))
 
-(define (cpu-equal? b r)
-  (define bpf-regs (bpf:regs->vector (bpf:cpu-regs b)))
-  (define regs
-    (for/vector [(i (in-range (vector-length bpf-regs)))]
-      (riscv:gpr-ref r (vector-ref regmap i))))
-  (equal? bpf-regs regs))
+(define (rv64_put_bpf_reg rv_cpu bpf_reg value)
+  (riscv:gpr-set! rv_cpu (regmap bpf_reg) value))
 
-(define (init-rv64-cpu target-pc bpf-cpu)
-  (define bpf-regs (bpf:regs->vector (bpf:cpu-regs bpf-cpu)))
-  (define riscv-cpu (riscv:init-cpu))
-  (riscv:set-cpu-pc! riscv-cpu target-pc)
-  (for ([i (in-range (vector-length bpf-regs))])
-    (riscv:gpr-set! riscv-cpu (vector-ref regmap i) (vector-ref bpf-regs i)))
-  riscv-cpu)
+(define (rv64_get_bpf_reg rv_cpu bpf_reg)
+  (riscv:gpr-ref rv_cpu (regmap bpf_reg)))
 
-(define (run-jitted-code riscv-cpu insns)
-  (define base (riscv:cpu-pc riscv-cpu))
-  (for/all ([insns insns #:exhaustive])
-    (interpret-program base riscv-cpu insns)))
+(define (rv64-simulate-call cpu call-addr call-fn)
+  (define memmgr (riscv:cpu-memmgr cpu))
 
-(define (fetch instrs base pc)
-  (define n (bitvector->natural (bvudiv (bvsub pc base) (bv 4 64))))
-  (cond
-    [(term? n) #f]
-    [(< n (vector-length instrs)) (vector-ref instrs n)]
-    [else #f]))
+ (define args (list
+    (riscv:gpr-ref cpu 'a0)
+    (riscv:gpr-ref cpu 'a1)
+    (riscv:gpr-ref cpu 'a2)
+    (riscv:gpr-ref cpu 'a3)
+    (riscv:gpr-ref cpu 'a4)))
 
-(define (interpret-program base cpu instrs)
-  ; cpu -> riscv cpu
-  ; intrs -> vector of instructions
-  (for/all ([pc (riscv:cpu-pc cpu) #:exhaustive])
-    (begin
-      (riscv:set-cpu-pc! cpu pc)
-      (define instr (fetch instrs base pc))
-      (for/all ([i instr #:exhaustive])
-        (when i
-          (riscv:interpret-insn cpu i)
-          (interpret-program base cpu instrs))))))
+  ; Compute result.
+  (define result
+    (core:list->bitvector/le (hybrid-memmgr-get-fresh-bytes memmgr 8)))
 
-; Replace bvmul/bvudiv/bvurem with UFs, as they are expensive to
-; reason about in SMT.
+  ; Generate trace event
+  (hybrid-memmgr-trace-event! memmgr
+    (apply call-event call-fn args))
 
-(define (bvmul-uf x y)
-  (define-symbolic bvmul64 (~> (bitvector 64) (bitvector 64) (bitvector 64)))
-  (define-symbolic bvmul32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
-  (case (core:bv-size x)
-    [(64) (bvmul64 x y)]
-    [(32) (bvmul32 x y)]
-    [else (exit 1)]))
+  ; Execute a "ret" (pseudo)instruction.
+  (riscv:interpret-insn cpu (rv_jalr RV_REG_ZERO RV_REG_RA 0))
+  (riscv:kill-jalr-mask cpu)
 
-(define (bvudiv-uf x y)
-  (define-symbolic bvudiv64 (~> (bitvector 64) (bitvector 64) (bitvector 64)))
-  (define-symbolic bvudiv32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
-  (case (core:bv-size x)
-    [(64) (bvudiv64 x y)]
-    [(32) (bvudiv32 x y)]
-    [else (exit 1)]))
+  ; Havoc caller-saved registers according to RISC-V calling convention
+  (riscv:havoc-caller-saved! cpu)
 
-(define (bvurem-uf x y)
-  (define-symbolic bvurem64 (~> (bitvector 64) (bitvector 64) (bitvector 64)))
-  (define-symbolic bvurem32 (~> (bitvector 32) (bitvector 32) (bitvector 32)))
-  (case (core:bv-size x)
-    [(64) (bvurem64 x y)]
-    [(32) (bvurem32 x y)]
-    [else (exit 1)]))
+  ; Set return value
+  (riscv:gpr-set! cpu RV_REG_A0 result))
+
+(define (rv64-init-cpu-invariants! ctx cpu)
+  (for ([inv (rv64-cpu-invariant-registers ctx cpu)])
+    (riscv:gpr-set! cpu (car inv) (cdr inv))))
+
+(define (rv64-cpu-invariants ctx cpu)
+  (define pc (riscv:cpu-pc cpu))
+  (&&
+    ; Upper bits of tail-call counter are sign extension of lower
+    (equal? (riscv:gpr-ref cpu RV_REG_TCC_SAVED)
+            (sign-extend (extract 31 0 (riscv:gpr-ref cpu RV_REG_TCC_SAVED))
+                         (bitvector 64)))
+    ; Program counter is aligned.
+    (core:bvaligned? pc (bv 4 (type-of pc)))
+    ; Registers have the correct values.
+    (apply &&
+      (for/list ([inv (rv64-cpu-invariant-registers ctx cpu)])
+        (equal? (riscv:gpr-ref cpu (car inv)) (cdr inv))))))
+
+(define (rv64-cpu-invariant-registers ctx cpu)
+  (define memmgr (riscv:cpu-memmgr cpu))
+  (define stackbase (hybrid-memmgr-stackbase memmgr))
+  (list (cons 'fp stackbase)
+        (cons 'sp (bvsub stackbase
+                         (context-stack_size ctx)))))
+
+(define (rv64-init-ctx insns-addr insn-idx program-length aux)
+  (define ctx (riscv-init-ctx insns-addr insn-idx program-length aux))
+  (define bpf_stack_depth (bpf-prog-aux-stack_depth aux))
+  (set-context-stack_size! ctx
+    (zero-extend (bvadd (round_up bpf_stack_depth (bv 16 32)) ; BPF stack size
+                        (bv (* 8 4) 32)) ; Space for saved regs
+                 (bitvector 64)))
+  ctx)
+
+(define (rv64-max-stack-usage ctx)
+  (context-stack_size ctx))
 
 (define rv64-target (make-bpf-target
-  #:target-cpu-pc riscv:cpu-pc
-  #:target-pc-alignment (bv 4 64)
-  #:target-bitwidth 64
-  #:init-cpu init-rv64-cpu
-  #:equiv cpu-equal?
-  #:run-code run-jitted-code
-  #:run-jit emit_insn
-  #:init-ctx init-ctx
-  #:bpf-to-target-pc bpf-to-target-pc
-  #:code-size code-size
-  #:max-target-size (bv #x8000000 64)))
+    #:cpu-pc riscv:cpu-pc
+    #:target-bitwidth 64
+    #:init-cpu (riscv-init-cpu 64)
+    #:abstract-regs (riscv-abstract-regs rv64_get_bpf_reg)
+    #:abstract-tail-call-cnt (lambda (cpu) (bvsub (bv MAX_TAIL_CALL_CNT 32) (extract 31 0 (riscv:gpr-ref cpu RV_REG_TCC_SAVED))))
+    #:cpu-memmgr riscv:cpu-memmgr
+    #:simulate-call rv64-simulate-call
+    #:cpu-invariants rv64-cpu-invariants
+    #:init-cpu-invariants! rv64-init-cpu-invariants!
+    #:run-code run-jitted-code
+    #:run-jit emit_insn
+    #:init-ctx rv64-init-ctx
+    #:bpf-to-target-pc bpf-to-target-pc
+    #:code-size code-size
+    #:max-target-size #x8000000
+    #:max-stack-usage rv64-max-stack-usage
+    #:have-efficient-unaligned-access #f
+    #:function-alignment 2
+))
 
 (define (check-jit code)
-  (parameterize
-    ([solver-logic 'QF_UFBV]
-     [core:bvmul-proc bvmul-uf]
-     [core:bvudiv-proc bvudiv-uf]
-     [core:bvurem-proc bvurem-uf]
-     [max-insn (bv #x1000000 32)])
-    (with-default-solver
-      (check-verify
-        (bpf-jit-specification
-          code
-          rv64-target)))))
+  (parameterize ([riscv:XLEN 64])
+    (verify-bpf-jit/64 code rv64-target)))
