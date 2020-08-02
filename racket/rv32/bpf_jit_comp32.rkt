@@ -1,7 +1,7 @@
 #lang rosette
 
 (require
-  "../lib/emit.rkt"
+  "../lib/extraction/c.rkt"
   "../lib/bpf-common.rkt"
   "../lib/riscv-common.rkt"
   "../lib/linux.rkt"
@@ -68,10 +68,10 @@
 
   (cond
     [(! (bvzero? upper))
-      (emit (rv_lui rd upper) ctx)
-      (emit (rv_addi rd rd lower) ctx)]
+      (emit_lui rd upper ctx)
+      (emit_addi rd rd lower ctx)]
     [else
-      (emit (rv_addi rd RV_REG_ZERO lower) ctx)]))
+      (emit_li rd lower ctx)]))
 
 (func (emit_imm32 rd imm ctx)
   (comment "/* Emit immediate into lower bits. */")
@@ -79,8 +79,8 @@
   (blank)
   (comment "/* Sign-extend into upper bits. */")
   (if (bvsge imm (bv 0 32))
-    (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx)
-    (emit (rv_addi (hi rd) RV_REG_ZERO -1) ctx)))
+    (emit_li (hi rd) (bv 0 32) ctx)
+    (emit_li (hi rd) (bv -1 32) ctx)))
 
 (func (emit_imm64 rd imm_hi imm_lo ctx)
   (emit_imm (lo rd) imm_lo ctx)
@@ -92,8 +92,8 @@
 
   (comment "/* Set return value if not tail call. */")
   (when (! is_tail_call)
-    (emit (rv_addi RV_REG_A0 (lo r0) 0) ctx)
-    (emit (rv_addi RV_REG_A1 (hi r0) 0) ctx))
+    (emit_mv RV_REG_A0 (lo r0) ctx)
+    (emit_mv RV_REG_A1 (hi r0) ctx))
 
   (blank)
   (comment "/* Restore callee-saved registers. */")
@@ -108,7 +108,7 @@
   (emit (rv_lw RV_REG_S7 (bvsub stack_adjust (bv 36 32)) RV_REG_SP) ctx)
 
   (blank)
-  (emit (rv_addi RV_REG_SP RV_REG_SP stack_adjust) ctx)
+  (emit_addi RV_REG_SP RV_REG_SP stack_adjust ctx)
 
   (blank)
   (cond
@@ -123,36 +123,35 @@
     [else
       (emit (rv_jalr RV_REG_ZERO RV_REG_RA 0) ctx)]))
 
-
 (define (is_stacked r)
   (bv? r))
 
 (func (bpf_get_reg64 reg tmp ctx)
   (when (is_stacked (hi reg))
-    (emit (rv_lw (hi tmp) (hi reg) RV_REG_FP) ctx)
-    (emit (rv_lw (lo tmp) (lo reg) RV_REG_FP) ctx)
+    (emit_lw (hi tmp) (hi reg) RV_REG_FP ctx)
+    (emit_lw (lo tmp) (lo reg) RV_REG_FP ctx)
     (set! reg tmp))
   reg)
 
 (func (bpf_put_reg64 reg src ctx)
   (when (is_stacked (hi reg))
-    (emit (rv_sw RV_REG_FP (hi reg) (hi src)) ctx)
-    (emit (rv_sw RV_REG_FP (lo reg) (lo src)) ctx)))
+    (emit_sw RV_REG_FP (hi reg) (hi src) ctx)
+    (emit_sw RV_REG_FP (lo reg) (lo src) ctx)))
 
 (func (bpf_get_reg32 reg tmp ctx)
   (when (is_stacked (lo reg))
-    (emit (rv_lw (lo tmp) (lo reg) RV_REG_FP) ctx)
+    (emit_lw (lo tmp) (lo reg) RV_REG_FP ctx)
     (set! reg tmp))
   reg)
 
 (func (bpf_put_reg32 reg src ctx)
   (cond
     [(is_stacked (lo reg))
-      (emit (rv_sw RV_REG_FP (lo reg) (lo src)) ctx)
+      (emit_sw RV_REG_FP (lo reg) (lo src) ctx)
       (when (! (->prog->aux->verifier_zext ctx))
-        (emit (rv_sw RV_REG_FP (hi reg) RV_REG_ZERO) ctx))]
+        (emit_sw RV_REG_FP (hi reg) RV_REG_ZERO ctx))]
     [(! (->prog->aux->verifier_zext ctx))
-      (emit (rv_addi (hi reg) RV_REG_ZERO 0) ctx)]))
+      (emit_li (hi reg) (bv 0 32) ctx)]))
 
 (define (emit_jump_and_link rd rvoff force_jalr ctx)
   (cond
@@ -182,12 +181,12 @@
     [(BPF_AND)
       (cond
         [(is_12b_int imm)
-          (emit (rv_andi (lo rd) (lo rd) imm) ctx)]
+          (emit_andi (lo rd) (lo rd) imm ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
-          (emit (rv_and (lo rd) (lo rd) RV_REG_T0) ctx)])
+          (emit_and (lo rd) (lo rd) RV_REG_T0 ctx)])
       (when (bvsge imm (bv 0 32))
-        (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx))]
+        (emit_li (hi rd) (bv 0 32) ctx))]
 
     [(BPF_OR)
       (cond
@@ -195,9 +194,9 @@
           (emit (rv_ori (lo rd) (lo rd) imm) ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
-          (emit (rv_or (lo rd) (lo rd) RV_REG_T0) ctx)])
+          (emit_or (lo rd) (lo rd) RV_REG_T0 ctx)])
       (when (bvslt imm (bv 0 32))
-        (emit (rv_ori (hi rd) RV_REG_ZERO -1) ctx))]
+        (emit_li (hi rd) (bv -1 32) ctx))]
 
     [(BPF_XOR)
       (cond
@@ -205,48 +204,48 @@
           (emit (rv_xori (lo rd) (lo rd) imm) ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
-          (emit (rv_xor (lo rd) (lo rd) RV_REG_T0) ctx)])
+          (emit_xor (lo rd) (lo rd) RV_REG_T0 ctx)])
       (when (bvslt imm (bv 0 32))
         (emit (rv_xori (hi rd) (hi rd) -1) ctx))]
 
     [(BPF_LSH)
       (cond
         [(bvuge imm (bv 32 32))
-          (emit (rv_slli (hi rd) (lo rd) (bvsub imm (bv 32 32))) ctx)
-          (emit (rv_addi (lo rd) RV_REG_ZERO 0) ctx)]
+          (emit_slli (hi rd) (lo rd) (bvsub imm (bv 32 32)) ctx)
+          (emit_li (lo rd) (bv 0 32) ctx)]
         [(equal? imm (bv 0 32))
           (comment "/* Do nothing. */")]
         [else
-          (emit (rv_srli RV_REG_T0 (lo rd) (bvsub (bv 32 32) imm)) ctx)
-          (emit (rv_slli (hi rd) (hi rd) imm) ctx)
-          (emit (rv_or (hi rd) RV_REG_T0 (hi rd)) ctx)
-          (emit (rv_slli (lo rd) (lo rd) imm) ctx)])]
+          (emit_srli RV_REG_T0 (lo rd) (bvsub (bv 32 32) imm) ctx)
+          (emit_slli (hi rd) (hi rd) imm ctx)
+          (emit_or (hi rd) RV_REG_T0 (hi rd) ctx)
+          (emit_slli (lo rd) (lo rd) imm ctx)])]
 
     [(BPF_RSH)
       (cond
         [(bvuge imm (bv 32 32))
-          (emit (rv_srli (lo rd) (hi rd) (bvsub imm (bv 32 32))) ctx)
-          (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx)]
+          (emit_srli (lo rd) (hi rd) (bvsub imm (bv 32 32)) ctx)
+          (emit_li (hi rd) (bv 0 32) ctx)]
         [(equal? imm (bv 0 32))
           (comment "/* Do nothing. */")]
         [else
-          (emit (rv_slli RV_REG_T0 (hi rd) (bvsub (bv 32 32) imm)) ctx)
-          (emit (rv_srli (lo rd) (lo rd) imm) ctx)
-          (emit (rv_or (lo rd) RV_REG_T0 (lo rd)) ctx)
-          (emit (rv_srli (hi rd) (hi rd) imm) ctx)])]
+          (emit_slli RV_REG_T0 (hi rd) (bvsub (bv 32 32) imm) ctx)
+          (emit_srli (lo rd) (lo rd) imm ctx)
+          (emit_or (lo rd) RV_REG_T0 (lo rd) ctx)
+          (emit_srli (hi rd) (hi rd) imm ctx)])]
 
     [(BPF_ARSH)
       (cond
         [(bvuge imm (bv 32 32))
-          (emit (rv_srai (lo rd) (hi rd) (bvsub imm (bv 32 32))) ctx)
-          (emit (rv_srai (hi rd) (hi rd) 31) ctx)]
+          (emit_srai (lo rd) (hi rd) (bvsub imm (bv 32 32)) ctx)
+          (emit_srai (hi rd) (hi rd) (bv 31 32) ctx)]
         [(equal? imm (bv 0 32))
           (comment "/* Do nothing. */")]
         [else
-          (emit (rv_slli RV_REG_T0 (hi rd) (bvsub (bv 32 32) imm)) ctx)
-          (emit (rv_srli (lo rd) (lo rd) imm) ctx)
-          (emit (rv_or (lo rd) RV_REG_T0 (lo rd)) ctx)
-          (emit (rv_srai (hi rd) (hi rd) imm) ctx)])])
+          (emit_slli RV_REG_T0 (hi rd) (bvsub (bv 32 32) imm) ctx)
+          (emit_srli (lo rd) (lo rd) imm ctx)
+          (emit_or (lo rd) RV_REG_T0 (lo rd) ctx)
+          (emit_srai (hi rd) (hi rd) imm ctx)])])
 
   (blank)
   (bpf_put_reg64 dst rd ctx))
@@ -261,56 +260,56 @@
     [(BPF_ADD)
       (cond
         [(is_12b_int imm)
-          (emit (rv_addi (lo rd) (lo rd) imm) ctx)]
+          (emit_addi (lo rd) (lo rd) imm ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
-          (emit (rv_add (lo rd) (lo rd) RV_REG_T0) ctx)])]
+          (emit_add (lo rd) (lo rd) RV_REG_T0 ctx)])]
     [(BPF_SUB)
       (cond
         [(is_12b_int (bvneg imm))
-          (emit (rv_addi (lo rd) (lo rd) (bvneg imm)) ctx)]
+          (emit_addi (lo rd) (lo rd) (bvneg imm) ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
-          (emit (rv_sub (lo rd) (lo rd) RV_REG_T0) ctx)])]
+          (emit_sub (lo rd) (lo rd) RV_REG_T0 ctx)])]
     [(BPF_AND)
       (cond
         [(is_12b_int imm)
-          (emit (rv_andi (lo rd) (lo rd) imm) ctx)]
+          (emit_andi (lo rd) (lo rd) imm ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
-          (emit (rv_and (lo rd) (lo rd) RV_REG_T0) ctx)])]
+          (emit_and (lo rd) (lo rd) RV_REG_T0 ctx)])]
     [(BPF_OR)
       (cond
         [(is_12b_int imm)
           (emit (rv_ori (lo rd) (lo rd) imm) ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
-          (emit (rv_or (lo rd) (lo rd) RV_REG_T0) ctx)])]
+          (emit_or (lo rd) (lo rd) RV_REG_T0 ctx)])]
     [(BPF_XOR)
       (cond
         [(is_12b_int imm)
           (emit (rv_xori (lo rd) (lo rd) imm) ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
-          (emit (rv_xor (lo rd) (lo rd) RV_REG_T0) ctx)])]
+          (emit_xor (lo rd) (lo rd) RV_REG_T0 ctx)])]
     [(BPF_LSH)
       (cond
         [(is_12b_int imm)
-          (emit (rv_slli (lo rd) (lo rd) imm) ctx)]
+          (emit_slli (lo rd) (lo rd) imm ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
           (emit (rv_sll (lo rd) (lo rd) RV_REG_T0) ctx)])]
     [(BPF_RSH)
       (cond
         [(is_12b_int imm)
-          (emit (rv_srli (lo rd) (lo rd) imm) ctx)]
+          (emit_srli (lo rd) (lo rd) imm ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
           (emit (rv_srl (lo rd) (lo rd) RV_REG_T0) ctx)])]
     [(BPF_ARSH)
       (cond
         [(is_12b_int imm)
-          (emit (rv_srai (lo rd) (lo rd) imm) ctx)]
+          (emit_srai (lo rd) (lo rd) imm ctx)]
         [else
           (emit_imm RV_REG_T0 imm ctx)
           (emit (rv_sra (lo rd) (lo rd) RV_REG_T0) ctx)])])
@@ -326,47 +325,47 @@
 
   (switch op
     [(BPF_MOV)
-      (emit (rv_addi (lo rd) (lo rs) 0) ctx)
-      (emit (rv_addi (hi rd) (hi rs) 0) ctx)]
+      (emit_mv (lo rd) (lo rs) ctx)
+      (emit_mv (hi rd) (hi rs) ctx)]
 
     [(BPF_ADD)
       (cond
         [(equal? rd rs)
-          (emit (rv_srli RV_REG_T0 (lo rd) 31) ctx)
-          (emit (rv_slli (hi rd) (hi rd) 1) ctx)
-          (emit (rv_or (hi rd) RV_REG_T0 (hi rd)) ctx)
-          (emit (rv_slli (lo rd) (lo rd) 1) ctx)]
+          (emit_srli RV_REG_T0 (lo rd) (bv 31 32) ctx)
+          (emit_slli (hi rd) (hi rd) (bv 1 32) ctx)
+          (emit_or (hi rd) RV_REG_T0 (hi rd) ctx)
+          (emit_slli (lo rd) (lo rd) (bv 1 32) ctx)]
         [else
-          (emit (rv_add (lo rd) (lo rd) (lo rs)) ctx)
+          (emit_add (lo rd) (lo rd) (lo rs) ctx)
           (emit (rv_sltu RV_REG_T0 (lo rd) (lo rs)) ctx)
-          (emit (rv_add (hi rd) (hi rd) (hi rs)) ctx)
-          (emit (rv_add (hi rd) (hi rd) RV_REG_T0) ctx)])]
+          (emit_add (hi rd) (hi rd) (hi rs) ctx)
+          (emit_add (hi rd) (hi rd) RV_REG_T0 ctx)])]
 
     [(BPF_SUB)
-      (emit (rv_sub RV_REG_T1 (hi rd) (hi rs)) ctx)
+      (emit_sub RV_REG_T1 (hi rd) (hi rs) ctx)
       (emit (rv_sltu RV_REG_T0 (lo rd) (lo rs)) ctx)
-      (emit (rv_sub (hi rd) RV_REG_T1 RV_REG_T0) ctx)
-      (emit (rv_sub (lo rd) (lo rd) (lo rs)) ctx)]
+      (emit_sub (hi rd) RV_REG_T1 RV_REG_T0 ctx)
+      (emit_sub (lo rd) (lo rd) (lo rs) ctx)]
 
     [(BPF_AND)
-      (emit (rv_and (lo rd) (lo rd) (lo rs)) ctx)
-      (emit (rv_and (hi rd) (hi rd) (hi rs)) ctx)]
+      (emit_and (lo rd) (lo rd) (lo rs) ctx)
+      (emit_and (hi rd) (hi rd) (hi rs) ctx)]
 
     [(BPF_OR)
-      (emit (rv_or (lo rd) (lo rd) (lo rs)) ctx)
-      (emit (rv_or (hi rd) (hi rd) (hi rs)) ctx)]
+      (emit_or (lo rd) (lo rd) (lo rs) ctx)
+      (emit_or (hi rd) (hi rd) (hi rs) ctx)]
 
     [(BPF_XOR)
-      (emit (rv_xor (lo rd) (lo rd) (lo rs)) ctx)
-      (emit (rv_xor (hi rd) (hi rd) (hi rs)) ctx)]
+      (emit_xor (lo rd) (lo rd) (lo rs) ctx)
+      (emit_xor (hi rd) (hi rd) (hi rs) ctx)]
 
     [(BPF_MUL)
       (emit (rv_mul RV_REG_T0 (hi rs) (lo rd)) ctx)
       (emit (rv_mul (hi rd) (hi rd) (lo rs)) ctx)
       (emit (rv_mulhu RV_REG_T1 (lo rd) (lo rs)) ctx)
-      (emit (rv_add (hi rd) (hi rd) RV_REG_T0) ctx)
+      (emit_add (hi rd) (hi rd) RV_REG_T0 ctx)
       (emit (rv_mul (lo rd) (lo rd) (lo rs)) ctx)
-      (emit (rv_add (hi rd) (hi rd) RV_REG_T1) ctx)]
+      (emit_add (hi rd) (hi rd) RV_REG_T1 ctx)]
 
     [(BPF_LSH)
       (emit (rv_addi RV_REG_T0 (lo rs) -32) ctx)
@@ -417,10 +416,10 @@
       (emit (rv_sra (hi rd) (hi rd) (lo rs)) ctx)]
 
     [(BPF_NEG)
-      (emit (rv_sub (lo rd) RV_REG_ZERO (lo rd)) ctx)
+      (emit_sub (lo rd) RV_REG_ZERO (lo rd) ctx)
       (emit (rv_sltu RV_REG_T0 RV_REG_ZERO (lo rd)) ctx)
-      (emit (rv_sub (hi rd) RV_REG_ZERO (hi rd)) ctx)
-      (emit (rv_sub (hi rd) (hi rd) RV_REG_T0) ctx)])
+      (emit_sub (hi rd) RV_REG_ZERO (hi rd) ctx)
+      (emit_sub (hi rd) (hi rd) RV_REG_T0 ctx)])
 
   (blank)
   (bpf_put_reg64 dst rd ctx))
@@ -433,17 +432,17 @@
 
   (switch op
     [(BPF_MOV)
-      (emit (rv_addi (lo rd) (lo rs) 0) ctx)]
+      (emit_mv (lo rd) (lo rs) ctx)]
     [(BPF_ADD)
-      (emit (rv_add (lo rd) (lo rd) (lo rs)) ctx)]
+      (emit_add (lo rd) (lo rd) (lo rs) ctx)]
     [(BPF_SUB)
-      (emit (rv_sub (lo rd) (lo rd) (lo rs)) ctx)]
+      (emit_sub (lo rd) (lo rd) (lo rs) ctx)]
     [(BPF_AND)
-      (emit (rv_and (lo rd) (lo rd) (lo rs)) ctx)]
+      (emit_and (lo rd) (lo rd) (lo rs) ctx)]
     [(BPF_OR)
-      (emit (rv_or (lo rd) (lo rd) (lo rs)) ctx)]
+      (emit_or (lo rd) (lo rd) (lo rs) ctx)]
     [(BPF_XOR)
-      (emit (rv_xor (lo rd) (lo rd) (lo rs)) ctx)]
+      (emit_xor (lo rd) (lo rd) (lo rs) ctx)]
     [(BPF_MUL)
       (emit (rv_mul (lo rd) (lo rd) (lo rs)) ctx)]
     [(BPF_DIV)
@@ -457,7 +456,7 @@
     [(BPF_ARSH)
       (emit (rv_sra (lo rd) (lo rd) (lo rs)) ctx)]
     [(BPF_NEG)
-      (emit (rv_sub (lo rd) RV_REG_ZERO (lo rd)) ctx)])
+      (emit_sub (lo rd) RV_REG_ZERO (lo rd) ctx)])
 
   (blank)
   (bpf_put_reg32 dst rd ctx))
@@ -521,7 +520,7 @@
       (emit (rv_beq RV_REG_T0 RV_REG_ZERO (NO_JUMP 0)) ctx)])
 
   (define e (context-ninsns ctx))
-  (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
+  (set! rvoff (bvsub rvoff (ninsns_rvoff (bvsub e s))))
   (emit_jump_and_link RV_REG_ZERO rvoff #t ctx))
 
 (define (emit_bcc op rd rs rvoff ctx)
@@ -559,12 +558,12 @@
     [(BPF_JSLE)
       (emit (rv_ble rd rs off) ctx)]
     [(BPF_JSET)
-      (emit (rv_and RV_REG_T0 rd rs) ctx)
+      (emit_and RV_REG_T0 rd rs ctx)
       (emit (rv_beq RV_REG_T0 RV_REG_ZERO off) ctx)])
 
     (when far
       (define e (context-ninsns ctx))
-      (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
+      (set! rvoff (bvsub rvoff (ninsns_rvoff (bvsub e s))))
       (emit_jump_and_link RV_REG_ZERO rvoff #t ctx)))
 
 (define (emit_branch_r32 src1 src2 rvoff ctx op)
@@ -577,7 +576,7 @@
   (define rs2 (bpf_get_reg32 src2 tmp2 ctx))
 
   (define e (context-ninsns ctx))
-  (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
+  (set! rvoff (bvsub rvoff (ninsns_rvoff (bvsub e s))))
 
   (emit_bcc op (lo rs1) (lo rs2) rvoff ctx))
 
@@ -595,13 +594,13 @@
 
   (begin/c #:id BLOCK_emit_call
   (comment "/* R1-R4 already in correct registers---need to push R5 to stack. */")
-  (emit (rv_addi RV_REG_SP RV_REG_SP -16) ctx)
-  (emit (rv_sw RV_REG_SP 0 (lo r5)) ctx)
-  (emit (rv_sw RV_REG_SP 4 (hi r5)) ctx)
+  (emit_addi RV_REG_SP RV_REG_SP (bv -16 32) ctx)
+  (emit_sw RV_REG_SP (bv 0 32) (lo r5) ctx)
+  (emit_sw RV_REG_SP (bv 4 32) (hi r5) ctx)
 
   (blank)
   (comment "/* Backup TCC. */")
-  (emit (rv_addi RV_REG_TCC_SAVED RV_REG_TCC 0) ctx)
+  (emit_mv RV_REG_TCC_SAVED RV_REG_TCC ctx)
 
   (blank)
   (comment "/*"
@@ -614,13 +613,13 @@
 
   (blank)
   (comment "/* Restore TCC. */")
-  (emit (rv_addi RV_REG_TCC RV_REG_TCC_SAVED 0) ctx)
+  (emit_mv RV_REG_TCC RV_REG_TCC_SAVED ctx)
 
   (blank)
   (comment "/* Set return value and restore stack. */")
-  (emit (rv_addi (lo r0) RV_REG_A0 0) ctx)
-  (emit (rv_addi (hi r0) RV_REG_A1 0) ctx)
-  (emit (rv_addi RV_REG_SP RV_REG_SP 16) ctx)))
+  (emit_mv (lo r0) RV_REG_A0 ctx)
+  (emit_mv (hi r0) RV_REG_A1 ctx)
+  (emit_addi RV_REG_SP RV_REG_SP (bv 16 32) ctx)))
 
 (define (emit_bpf_tail_call insn insn-idx ctx)
 
@@ -638,23 +637,23 @@
   (core:bug-on (! (is_12b_int off)) #:msg "tail call")
   (emit (rv_lw RV_REG_T1 off (lo arr_reg)) ctx)
 
-  (set! off (bvshl (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn)) (bv 2 32)))
+  (set! off (ninsns_rvoff (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn))))
   (emit_bcc 'BPF_JGE (lo idx_reg) RV_REG_T1 off ctx)
 
-  (emit (rv_addi RV_REG_T1 RV_REG_TCC -1) ctx)
-  (set! off (bvshl (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn)) (bv 2 32)))
+  (emit_addi RV_REG_T1 RV_REG_TCC (bv -1 32) ctx)
+  (set! off (ninsns_rvoff (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn))))
   (emit_bcc 'BPF_JSLT RV_REG_TCC RV_REG_ZERO off ctx)
 
-  (emit (rv_slli RV_REG_T0 (lo idx_reg) 2) ctx)
-  (emit (rv_add RV_REG_T0 RV_REG_T0 (lo arr_reg)) ctx)
+  (emit_slli RV_REG_T0 (lo idx_reg) (bv 2 32) ctx)
+  (emit_add RV_REG_T0 RV_REG_T0 (lo arr_reg) ctx)
   (set! off (bv 8 32)) ; TODO use real offsetof
   (emit (rv_lw RV_REG_T0 off RV_REG_T0) ctx)
-  (set! off (bvshl (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn)) (bv 2 32)))
+  (set! off (ninsns_rvoff (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn))))
   (emit_bcc 'BPF_JEQ RV_REG_T0 RV_REG_ZERO off ctx)
 
   (set! off (bv 0 32))
   (emit (rv_lw RV_REG_T0 off RV_REG_T0) ctx)
-  (emit (rv_addi RV_REG_TCC RV_REG_T1 0) ctx)
+  (emit_mv RV_REG_TCC RV_REG_T1 ctx)
 
   (__build_epilogue #t ctx)
   (void))
@@ -666,25 +665,25 @@
        [rs (bpf_get_reg64 src tmp2 ctx)])
 
   (emit_imm RV_REG_T0 (sign-extend off (bitvector 32)) ctx)
-  (emit (rv_add RV_REG_T0 RV_REG_T0 (lo rs)) ctx)
+  (emit_add RV_REG_T0 RV_REG_T0 (lo rs) ctx)
   (blank)
 
   (switch size
     [(BPF_B)
       (emit (rv_lbu (lo rd) 0 RV_REG_T0) ctx)
       (when (! (->prog->aux->verifier_zext ctx))
-        (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx))]
+        (emit_li (hi rd) (bv 0 32) ctx))]
     [(BPF_H)
       (emit (rv_lhu (lo rd) 0 RV_REG_T0) ctx)
       (when (! (->prog->aux->verifier_zext ctx))
-        (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx))]
+        (emit_li (hi rd) (bv 0 32) ctx))]
     [(BPF_W)
-      (emit (rv_lw (lo rd) 0 RV_REG_T0) ctx)
+      (emit_lw (lo rd) (bv 0 32) RV_REG_T0 ctx)
       (when (! (->prog->aux->verifier_zext ctx))
-        (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx))]
+        (emit_li (hi rd) (bv 0 32) ctx))]
     [(BPF_DW)
-      (emit (rv_lw (lo rd) 0 RV_REG_T0) ctx)
-      (emit (rv_lw (hi rd) 4 RV_REG_T0) ctx)])
+      (emit_lw (lo rd) (bv 0 32) RV_REG_T0 ctx)
+      (emit_lw (hi rd) (bv 4 32) RV_REG_T0 ctx)])
 
   (blank)
   (bpf_put_reg64 dst rd ctx)
@@ -698,7 +697,7 @@
   (define rs (bpf_get_reg64 src tmp2 ctx))
 
   (emit_imm RV_REG_T0 (sign-extend off (bitvector 32)) ctx)
-  (emit (rv_add RV_REG_T0 RV_REG_T0 (lo rd)) ctx)
+  (emit_add RV_REG_T0 RV_REG_T0 (lo rd) ctx)
 
   (switch size #:id SWITCH_emit_store_r64
     [(BPF_B)
@@ -708,46 +707,46 @@
     [(BPF_W)
       (case mode
         [(BPF_MEM)
-          (emit (rv_sw RV_REG_T0 0 (lo rs)) ctx)]
+          (emit_sw RV_REG_T0 (bv 0 32) (lo rs) ctx)]
         [(BPF_XADD)
           (emit (rv_amoadd_w RV_REG_ZERO (lo rs) RV_REG_T0 0 0) ctx)])]
     [(BPF_DW)
-      (emit (rv_sw RV_REG_T0 0 (lo rs)) ctx)
-      (emit (rv_sw RV_REG_T0 4 (hi rs)) ctx)]))
+      (emit_sw RV_REG_T0 (bv 0 32) (lo rs) ctx)
+      (emit_sw RV_REG_T0 (bv 4 32) (hi rs) ctx)]))
 
 (func (emit_rev16 rd ctx)
-  (emit (rv_slli rd rd 16) ctx)
-  (emit (rv_slli RV_REG_T1 rd 8) ctx)
-  (emit (rv_srli rd rd 8) ctx)
-  (emit (rv_add RV_REG_T1 rd RV_REG_T1) ctx)
-  (emit (rv_srli rd RV_REG_T1 16) ctx))
+  (emit_slli rd rd (bv 16 32) ctx)
+  (emit_slli RV_REG_T1 rd (bv 8 32) ctx)
+  (emit_srli rd rd (bv 8 32) ctx)
+  (emit_add RV_REG_T1 RV_REG_T1 rd ctx)
+  (emit_srli rd RV_REG_T1 (bv 16 32) ctx))
 
 (func (emit_rev32 rd ctx)
-  (emit (rv_addi RV_REG_T1 RV_REG_ZERO 0) ctx)
+  (emit_li RV_REG_T1 (bv 0 32) ctx)
 
-  (emit (rv_andi RV_REG_T0 rd #xff) ctx)
-  (emit (rv_add RV_REG_T1 RV_REG_T1 RV_REG_T0) ctx)
-  (emit (rv_slli RV_REG_T1 RV_REG_T1 8) ctx)
-  (emit (rv_srli rd rd 8) ctx)
+  (emit_andi RV_REG_T0 rd (bv #xff 32) ctx)
+  (emit_add RV_REG_T1 RV_REG_T1 RV_REG_T0 ctx)
+  (emit_slli RV_REG_T1 RV_REG_T1 (bv 8 32) ctx)
+  (emit_srli rd rd (bv 8 32) ctx)
 
-  (emit (rv_andi RV_REG_T0 rd #xff) ctx)
-  (emit (rv_add RV_REG_T1 RV_REG_T1 RV_REG_T0) ctx)
-  (emit (rv_slli RV_REG_T1 RV_REG_T1 8) ctx)
-  (emit (rv_srli rd rd 8) ctx)
+  (emit_andi RV_REG_T0 rd (bv #xff 32) ctx)
+  (emit_add RV_REG_T1 RV_REG_T1 RV_REG_T0 ctx)
+  (emit_slli RV_REG_T1 RV_REG_T1 (bv 8 32) ctx)
+  (emit_srli rd rd (bv 8 32) ctx)
 
-  (emit (rv_andi RV_REG_T0 rd #xff) ctx)
-  (emit (rv_add RV_REG_T1 RV_REG_T1 RV_REG_T0) ctx)
-  (emit (rv_slli RV_REG_T1 RV_REG_T1 8) ctx)
-  (emit (rv_srli rd rd 8) ctx)
-  (emit (rv_andi RV_REG_T0 rd #xff) ctx)
-  (emit (rv_add RV_REG_T1 RV_REG_T1 RV_REG_T0) ctx)
+  (emit_andi RV_REG_T0 rd (bv #xff 32) ctx)
+  (emit_add RV_REG_T1 RV_REG_T1 RV_REG_T0 ctx)
+  (emit_slli RV_REG_T1 RV_REG_T1 (bv 8 32) ctx)
+  (emit_srli rd rd (bv 8 32) ctx)
+  (emit_andi RV_REG_T0 rd (bv #xff 32) ctx)
+  (emit_add RV_REG_T1 RV_REG_T1 RV_REG_T0 ctx)
 
-  (emit (rv_addi rd RV_REG_T1 0) ctx))
+  (emit_mv rd RV_REG_T1 ctx))
 
 (define (emit_zext64 dst ctx)
   (define tmp1 (bpf2rv32 TMP_REG_1))
   (define rd (bpf_get_reg64 dst tmp1 ctx))
-  (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx)
+  (emit_li (hi rd) (bv 0 32) ctx)
   (bpf_put_reg64 dst rd ctx))
 
 (define (emit_insn insn-idx insn next-insn ctx)
@@ -856,13 +855,13 @@
 
       (cond
         [(equal? imm (bv 16 32))
-          (emit (rv_slli (lo rd) (lo rd) 16) ctx)
-          (emit (rv_srli (lo rd) (lo rd) 16) ctx)
+          (emit_slli (lo rd) (lo rd) (bv 16 32) ctx)
+          (emit_srli (lo rd) (lo rd) (bv 16 32) ctx)
           (when (! (->prog->aux->verifier_zext ctx))
-            (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx))]
+            (emit_li (hi rd) (bv 0 32) ctx))]
         [(equal? imm (bv 32 32))
           (when (! (->prog->aux->verifier_zext ctx))
-            (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx))]
+            (emit_li (hi rd) (bv 0 32) ctx))]
         [(equal? imm (bv 64 32))
           (comment "/* Do nothing. */")]
         [else
@@ -878,16 +877,16 @@
         [((bv 16 32))
           (emit_rev16 (lo rd) ctx)
           (when (! (->prog->aux->verifier_zext ctx))
-            (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx))]
+            (emit_li (hi rd) (bv 0 32) ctx))]
         [((bv 32 32))
           (emit_rev32 (lo rd) ctx)
           (when (! (->prog->aux->verifier_zext ctx))
-            (emit (rv_addi (hi rd) RV_REG_ZERO 0) ctx))]
+            (emit_li (hi rd) (bv 0 32) ctx))]
         [((bv 64 32))
           (comment "/* Swap upper and lower halves. */")
-          (emit (rv_addi RV_REG_T0 (lo rd) 0) ctx)
-          (emit (rv_addi (lo rd) (hi rd) 0) ctx)
-          (emit (rv_addi (hi rd) RV_REG_T0 0) ctx)
+          (emit_mv RV_REG_T0 (lo rd) ctx)
+          (emit_mv (lo rd) (hi rd) ctx)
+          (emit_mv (hi rd) RV_REG_T0 ctx)
 
           (blank)
           (comment "/* Swap each half. */")
@@ -975,7 +974,7 @@
         (emit_imm32 tmp2 imm ctx)
         (set! src tmp2)
         (define e (context-ninsns ctx))
-        (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32)))))
+        (set! rvoff (bvsub rvoff (ninsns_rvoff (bvsub e s)))))
       (if is64
         (emit_branch_r64 dst src rvoff ctx (BPF_OP code))
         (emit_branch_r32 dst src rvoff ctx (BPF_OP code)))]
@@ -1047,10 +1046,10 @@
            " * The first instruction sets the tail-call-counter (TCC) register."
            " * This instruction is skipped by tail calls."
            " */")
-  (emit (rv_addi RV_REG_TCC RV_REG_ZERO MAX_TAIL_CALL_CNT) ctx)
+  (emit_li RV_REG_TCC (bv MAX_TAIL_CALL_CNT 32) ctx)
 
   (blank)
-  (emit (rv_addi RV_REG_SP RV_REG_SP (bvneg stack_adjust)) ctx)
+  (emit_addi RV_REG_SP RV_REG_SP (bvneg stack_adjust) ctx)
 
   (blank)
   (comment "/* Save callee-save registers. */")
@@ -1066,17 +1065,17 @@
 
   (blank)
   (comment "/* Set fp: used as the base address for stacked BPF registers. */")
-  (emit (rv_addi RV_REG_FP RV_REG_SP stack_adjust) ctx)
+  (emit_addi RV_REG_FP RV_REG_SP stack_adjust ctx)
 
   (blank)
   (comment "/* Set up BPF frame pointer. */")
-  (emit (rv_addi (lo fp) RV_REG_SP bpf_stack_adjust) ctx)
-  (emit (rv_addi (hi fp) RV_REG_ZERO 0) ctx)
+  (emit_addi (lo fp) RV_REG_SP bpf_stack_adjust ctx)
+  (emit_li (hi fp) (bv 0 32) ctx)
 
   (blank)
   (comment "/* Set up BPF context pointer. */")
-  (emit (rv_addi (lo r1) RV_REG_A0 0) ctx)
-  (emit (rv_addi (hi r1) RV_REG_ZERO 0) ctx)
+  (emit_mv (lo r1) RV_REG_A0 ctx)
+  (emit_li (hi r1) (bv 0 32) ctx)
 
   (blank)
   (set-field! context ctx stack_size stack_adjust))

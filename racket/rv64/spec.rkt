@@ -37,7 +37,7 @@
 
   ; Generate trace event
   (hybrid-memmgr-trace-event! memmgr
-    (apply call-event call-fn args))
+    (apply call-event call-fn result args))
 
   ; Execute a "ret" (pseudo)instruction.
   (riscv:interpret-insn cpu (rv_jalr RV_REG_ZERO RV_REG_RA 0))
@@ -61,7 +61,7 @@
             (sign-extend (extract 31 0 (riscv:gpr-ref cpu RV_REG_TCC_SAVED))
                          (bitvector 64)))
     ; Program counter is aligned.
-    (core:bvaligned? pc (bv 4 (type-of pc)))
+    (core:bvaligned? pc (bv 2 (type-of pc)))
     ; Registers have the correct values.
     (apply &&
       (for/list ([inv (rv64-cpu-invariant-registers ctx cpu)])
@@ -87,24 +87,23 @@
   (context-stack_size ctx))
 
 (define rv64-target (make-bpf-target
-    #:cpu-pc riscv:cpu-pc
-    #:target-bitwidth 64
-    #:init-cpu (riscv-init-cpu 64)
-    #:abstract-regs (riscv-abstract-regs rv64_get_bpf_reg)
-    #:abstract-tail-call-cnt (lambda (cpu) (bvsub (bv MAX_TAIL_CALL_CNT 32) (extract 31 0 (riscv:gpr-ref cpu RV_REG_TCC_SAVED))))
-    #:cpu-memmgr riscv:cpu-memmgr
-    #:simulate-call rv64-simulate-call
-    #:cpu-invariants rv64-cpu-invariants
-    #:init-cpu-invariants! rv64-init-cpu-invariants!
-    #:run-code run-jitted-code
-    #:run-jit emit_insn
-    #:init-ctx rv64-init-ctx
-    #:bpf-to-target-pc bpf-to-target-pc
-    #:code-size code-size
-    #:max-target-size #x8000000
-    #:max-stack-usage rv64-max-stack-usage
-    #:have-efficient-unaligned-access #f
-    #:function-alignment 2
+  #:target-bitwidth 64
+  #:init-cpu (riscv-init-cpu 64)
+  #:abstract-regs (riscv-abstract-regs rv64_get_bpf_reg)
+  #:abstract-tail-call-cnt (lambda (cpu) (bvsub (bv MAX_TAIL_CALL_CNT 32) (extract 31 0 (riscv:gpr-ref cpu RV_REG_TCC_SAVED))))
+  #:simulate-call rv64-simulate-call
+  #:cpu-invariants rv64-cpu-invariants
+  #:init-cpu-invariants! rv64-init-cpu-invariants!
+  #:run-code run-jitted-code
+  #:run-jit emit_insn
+  #:init-ctx rv64-init-ctx
+  #:bpf-to-target-pc bpf-to-target-pc
+  #:code-size code-size
+  #:max-target-size #x8000000
+  #:max-stack-usage rv64-max-stack-usage
+  #:have-efficient-unaligned-access #f
+  #:function-alignment 2
+  #:ctx-valid? riscv-ctx-valid?
 ))
 
 (define (check-jit code)

@@ -1,7 +1,7 @@
 #lang rosette
 
 (require
-  "jit.rkt"
+  "bpf_jit_comp32.rkt"
   "../lib/bpf-common.rkt"
   "../lib/hybrid-memory.rkt"
   "../lib/spec/bpf.rkt"
@@ -16,7 +16,7 @@
 (define (init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* addrs (~> (bitvector 32) (bitvector 32)))
   (define-symbolic* len (bitvector 32))
-  (define ctx (context (vector) addrs len aux))
+  (define ctx (context insns-addr (vector) addrs len aux))
   ctx)
 
 (define (code-size vec)
@@ -58,8 +58,10 @@
 
 (define (cpu-invariant-registers ctx cpu)
   (define mm (x86:cpu-memmgr cpu))
+  (define aux (context-aux ctx))
   (define stackbase (hybrid-memmgr-stackbase mm))
-  (list (cons x86:ebp (bvsub stackbase (STACK_SIZE (context-aux ctx))))))
+  (list (cons x86:ebp (bvsub stackbase (bv (+ SCRATCH_SIZE 12) 32)))
+        (cons x86:esp (bvsub stackbase (bvadd (STACK_SIZE aux) (bv 16 32))))))
 
 (define (init-x86-cpu ctx target-pc memmgr)
   (define x86-cpu (x86:init-cpu memmgr))
@@ -106,23 +108,58 @@
 
 (define (x86_32-max-stack-usage ctx)
   (bvadd (STACK_SIZE (context-aux ctx))
-         (bv (* 8 5) 32))) ; Space for BPF_CALL
+         (bv 16 32) ; saved regs
+         (bv 4 32) ; space for return addr
+         (bv (* 8 5) 32))) ; Space for BPF_CALL regs
+
+(define (x86_32-simulate-call cpu call-addr call-fn)
+  (define memmgr (x86:cpu-memmgr cpu))
+
+  (define (loadfromstack off)
+    (core:memmgr-load memmgr (x86:cpu-gpr-ref cpu x86:esp) off (bv 4 32) #:dbg 'x86_32-simulate-call))
+
+  ; i386 calling convention.
+  ; NB: Linux is compiled with -mregparm=3, so the first 64-bit argument is
+  ; stored in [edx:eax] rather than on the stack.
+  (define args (list
+    (concat (x86:cpu-gpr-ref cpu x86:edx) (x86:cpu-gpr-ref cpu x86:eax))
+    ; Start counting from (bv 4 32) to skip pushed return address.
+    (concat (loadfromstack (bv 8 32)) (loadfromstack (bv 4 32)))
+    (concat (loadfromstack (bv 16 32)) (loadfromstack (bv 12 32)))
+    (concat (loadfromstack (bv 24 32)) (loadfromstack (bv 20 32)))
+    (concat (loadfromstack (bv 32 32)) (loadfromstack (bv 28 32)))))
+
+  ; Obtain nondeterministic result from memmgr.
+  (define result
+    (core:list->bitvector/le (hybrid-memmgr-get-fresh-bytes memmgr 8)))
+
+  ; Generate trace event
+  (hybrid-memmgr-trace-event! memmgr
+    (apply call-event call-fn result args))
+
+  ; Set the return value registers.
+  (x86:cpu-gpr-set! cpu x86:eax (extract 31 0 result))
+  (x86:cpu-gpr-set! cpu x86:edx (extract 63 32 result))
+
+  ; Simulate an x86 'ret' instruction.
+  (x86:interpret-insn cpu (x86:ret-near)))
 
 (define x86_32-target (make-bpf-target
-    #:target-bitwidth 32
-    #:abstract-regs cpu-abstract-regs
-    #:cpu-memmgr x86:cpu-memmgr
-    #:run-jit emit_insn
-    #:run-code run-jitted-code
-    #:init-cpu init-x86-cpu
-    #:init-cpu-invariants! init-cpu-invariants!
-    #:cpu-invariants cpu-invariants
-    #:max-target-size #x800000
-    #:init-ctx init-ctx
-    #:code-size code-size
-    #:max-stack-usage x86_32-max-stack-usage
-    #:bpf-to-target-pc bpf-to-target-pc
-    #:cpu-pc x86:cpu-pc-ref))
+  #:target-bitwidth 32
+  #:abstract-regs cpu-abstract-regs
+  #:run-jit emit_insn
+  #:run-code run-jitted-code
+  #:init-cpu init-x86-cpu
+  #:init-cpu-invariants! init-cpu-invariants!
+  #:cpu-invariants cpu-invariants
+  #:max-target-size #x800000
+  #:init-ctx init-ctx
+  #:code-size code-size
+  #:max-stack-usage x86_32-max-stack-usage
+  #:bpf-to-target-pc bpf-to-target-pc
+  #:simulate-call x86_32-simulate-call
+  #:supports-pseudocall #f
+))
 
 (define (check-jit code)
   (verify-bpf-jit/32 code x86_32-target))

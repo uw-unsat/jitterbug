@@ -12,6 +12,7 @@
 
 (require
   "../lib/bpf-common.rkt"
+  "../lib/bvaxiom.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in x86: serval/x86))
@@ -25,7 +26,7 @@
     (eprintf "static assertion failed: ~a" msg)
     (exit 1)))
 
-(struct context (insns offset len) #:mutable #:transparent)
+(struct context (insns offset len image) #:mutable #:transparent)
 
 (define (emit_code ctx lst)
   (define size (bv (length lst) 32))
@@ -67,6 +68,9 @@
 (define (is_imm8 x)
   (define value (sign-extend x (bitvector 32)))
   (&& (bvsle value (bv 127 32)) (bvsge value (bv -128 32))))
+
+(define (is_simm32 value)
+  (bveq value (sign-extend (extract 31 0 value) (bitvector 64))))
 
 (define (is_uimm32 value)
   (bveq value (zero-extend (extract 31 0 value) (bitvector 64))))
@@ -178,6 +182,15 @@
           (reg2hex src_reg)
           (reg2hex dst_reg)))
 
+(define X86_PATCH_SIZE 5)
+
+(define (emit_patch pprog func ip opcode)
+  (define offset (bvsub func (bvadd ip (bv X86_PATCH_SIZE 64))))
+  (assume (is_simm32 offset))
+  (EMIT1_off32 opcode offset))
+
+(define (emit_call pprog func ip)
+  (emit_patch pprog func ip #xE8))
 
 (define (emit_mov_imm32 pprog sign_propagate dst_reg imm32)
   (cond
@@ -331,6 +344,7 @@
   (define off32 (sign-extend off (bitvector 32)))
 
   (define addrs (context-offset &prog))
+  (define image (context-image &prog))
   (define is64 (equal? (BPF_CLASS code) 'BPF_ALU64))
 
   (define emit_cond_jmp (lambda () (@emit_cond_jmp code i off addrs)))
@@ -669,6 +683,11 @@
     [((BPF_STX BPF_XADD BPF_DW))
      (EMIT3 #xF0 (add_2mod #x48 dst_reg src_reg) #x01)
      (xadd)]
+
+    ; call
+    [((BPF_JMP BPF_CALL))
+      (define func (bvadd (bpf-jit-call-base) (zero-extend imm32 (bitvector 64))))
+      (emit_call &prog func (bvadd image (zero-extend (addrs (bvsub1 i)) (bitvector 64))))]
 
     ; cond jump
     [((BPF_JMP BPF_JEQ BPF_X)

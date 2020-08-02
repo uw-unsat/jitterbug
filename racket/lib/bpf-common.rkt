@@ -1,6 +1,7 @@
 #lang rosette
 
 (require
+  serval/lib/bvarith
   (prefix-in bvaxiom: "bvaxiom.rkt")
   (prefix-in bpf: serval/bpf)
   (prefix-in core: serval/lib/core))
@@ -71,7 +72,7 @@
       (equal? (BPF_CLASS code) 'BPF_ST)))
 
 (define (code+operands->addr+size bitwidth code dst-op src-op off)
-  (values (bvadd (extract (- bitwidth 1) 0 (if (equal? (BPF_CLASS code) 'BPF_LDX) src-op dst-op))
+  (values (bvadd (trunc bitwidth (if (equal? (BPF_CLASS code) 'BPF_LDX) src-op dst-op))
                  (sign-extend off (bitvector bitwidth)))
           (bv (bpf:bpf-size->integer (BPF_SIZE code)) bitwidth)))
 

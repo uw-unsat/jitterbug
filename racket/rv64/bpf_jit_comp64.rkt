@@ -85,33 +85,32 @@
 ; does not run out. 4 appears to be the minimum value for fuel
 ; that is correct for all possible 64-bit values.
 (define (emit_imm rd val ctx #:fuel [fuel 4])
-  (when (<= (core:bv-size val) 32)
-    (set! fuel 1))
   (cond
     [(zero? fuel) (core:bug #:msg "emit_imm: ran out of fuel")]
     [else
       (define val64 (sign-extend val (bitvector 64)))
       (define upper
         (bvashr (bvadd val64 (bvshl (bv 1 64) (bv 11 64))) (bv 12 64)))
-      (define lower (bvand val64 (bv #xfff 64)))
+      (define lower (bvashr (bvshl (bvand val64 (bv #xfff 64)) (bv 52 64)) (bv 52 64)))
 
       (cond
-        [(is_32b_int val64)
+        [(|| (is_32b_int val64) (<= (core:bv-size val) 32))
+          (assert (is_32b_int val64))
           (cond
             [(bvzero? upper)
-              (emit (rv_addi rd RV_REG_ZERO lower) ctx)]
+              (emit_li rd (core:trunc 32 lower) ctx)]
             [else
-              (emit (rv_lui rd upper) ctx)
-              (emit (rv_addiw rd rd lower) ctx)])]
+              (emit_lui rd (core:trunc 32 upper) ctx)
+              (emit_addiw rd rd (core:trunc 32 lower) ctx)])]
 
         [else
-          (define shift (__ffs upper))
+          (define shift (ffs-uf upper))
           (set! upper (bvashr upper shift))
           (set! shift (bvadd shift (bv 12 64)))
-          (emit_imm rd upper ctx #:fuel (- fuel 1))
-          (emit (rv_slli rd rd shift) ctx)
+          (emit_imm rd upper ctx #:fuel (sub1 fuel))
+          (emit_slli rd rd (core:trunc 32 shift) ctx)
           (when (! (bvzero? lower))
-            (emit (rv_addi rd rd lower) ctx))])]))
+            (emit_addi rd rd (core:trunc 32 lower) ctx))])]))
 
 (define (emit_bcc cond_ rd rs rvoff ctx)
   (case cond_
@@ -165,8 +164,8 @@
           (emit (rv_jalr RV_REG_ZERO RV_REG_T1 lower) ctx)])]))
 
 (define (emit_zext_32 reg ctx)
-  (emit (rv_slli reg reg 32) ctx)
-  (emit (rv_srli reg reg 32) ctx))
+  (emit_slli reg reg (bv 32 32) ctx)
+  (emit_srli reg reg (bv 32 32) ctx))
 
 (define (emit_bpf_tail_call insn insn-idx ctx)
 
@@ -185,47 +184,47 @@
   (core:bug-on (! (is_12b_int off)) #:msg "tail call")
   (emit (rv_lwu RV_REG_T1 off RV_REG_A1) ctx)
 
-  (set! off (bvshl (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn)) (bv 2 32)))
+  (set! off (ninsns_rvoff (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn))))
   (emit_branch 'BPF_JGE RV_REG_A2 RV_REG_T1 insn-idx off ctx)
 
   (emit (rv_addi RV_REG_T1 tcc -1) ctx)
-  (set! off (bvshl (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn)) (bv 2 32)))
+  (set! off (ninsns_rvoff (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn))))
   (emit_branch 'BPF_JSLT tcc RV_REG_ZERO insn-idx off ctx)
 
-  (emit (rv_slli RV_REG_T2 RV_REG_A2 3) ctx)
-  (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_A1) ctx)
+  (emit_slli RV_REG_T2 RV_REG_A2 (bv 3 32) ctx)
+  (emit_add RV_REG_T2 RV_REG_T2 RV_REG_A1 ctx)
   (set! off (bv 8 32)) ; TODO use real offsetof
-  (emit (rv_ld RV_REG_T2 off RV_REG_T2) ctx)
-  (set! off (bvshl (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn)) (bv 2 32)))
+  (emit_ld RV_REG_T2 off RV_REG_T2 ctx)
+  (set! off (ninsns_rvoff (bvsub tc_insn (bvsub (context-ninsns ctx) start_insn))))
   (emit_bcc 'BPF_JEQ RV_REG_T2 RV_REG_ZERO off ctx)
 
   (set! off (bv 0 32))
-  (emit (rv_ld RV_REG_T3 off RV_REG_T2) ctx)
-  (emit (rv_addi tcc RV_REG_T1 0) ctx)
+  (emit_ld RV_REG_T3 off RV_REG_T2 ctx)
+  (emit_mv tcc RV_REG_T1 ctx)
 
   ; (__build_epilogue #t ctx)
   (void))
 
 (define (emit_zext_32_rd_rs rd rs ctx)
-  (emit (rv_addi RV_REG_T2 rd 0) ctx)
+  (emit_mv RV_REG_T2 rd ctx)
   (emit_zext_32 RV_REG_T2 ctx)
-  (emit (rv_addi RV_REG_T1 rs 0) ctx)
+  (emit_mv RV_REG_T1 rs ctx)
   (emit_zext_32 RV_REG_T1 ctx)
   (values RV_REG_T2 RV_REG_T1))
 
 (define (emit_sext_32_rd_rs rd rs ctx)
-  (emit (rv_addiw RV_REG_T2 rd 0) ctx)
-  (emit (rv_addiw RV_REG_T1 rs 0) ctx)
+  (emit_addiw RV_REG_T2 rd (bv 0 32) ctx)
+  (emit_addiw RV_REG_T1 rs (bv 0 32) ctx)
   (values RV_REG_T2 RV_REG_T1))
 
 (define (emit_zext_32_rd_t1 rd ctx)
-  (emit (rv_addi RV_REG_T2 rd 0) ctx)
+  (emit_mv RV_REG_T2 rd ctx)
   (emit_zext_32 RV_REG_T2 ctx)
   (emit_zext_32 RV_REG_T1 ctx)
   (values RV_REG_T2))
 
 (define (emit_sext_32_rd rd ctx)
-  (emit (rv_addiw RV_REG_T2 rd 0) ctx)
+  (emit_addiw RV_REG_T2 rd (bv 0 32) ctx)
   (values RV_REG_T2))
 
 (define (emit_jump_and_link rd rvoff force_jalr ctx)
@@ -240,9 +239,7 @@
       (emit (rv_auipc RV_REG_T1 upper) ctx)
       (emit (rv_jalr rd RV_REG_T1 lower) ctx)]
     [else
-      ; TODO: thread return values in the same way as the C implementation
-      ; and assume the return value of the overall jit is 0.
-      (void)]))
+      (core:bug #:msg "emit_jump_and_link: out of range")]))
 
 (define (is_signed_bpf_cond cond_)
   (case cond_
@@ -252,16 +249,17 @@
 (define (emit_call fixed addr ctx)
 
   (define ip (bvadd (context-insns-addr ctx)
-                    (bvmul (bv 4 64) (zero-extend (context-ninsns ctx) (bitvector 64)))))
+                    (bvmul (bv 2 64) (zero-extend (context-ninsns ctx) (bitvector 64)))))
 
   (define off (bvsub addr ip))
 
   ; Assume that any offset to function call is reacahble with auipc+jalr.
   (assume (in_auipc_jalr_range off))
 
-  (emit_jump_and_link RV_REG_RA off (! fixed) ctx)
+  (when (in_auipc_jalr_range off)
+    (emit_jump_and_link RV_REG_RA off (! fixed) ctx))
   (define rd (bpf_to_rv_reg BPF_REG_0 ctx))
-  (emit (rv_addi rd RV_REG_A0 0) ctx))
+  (emit_mv rd RV_REG_A0 ctx))
 
 (define (emit_insn insn-idx insn next-insn ctx)
   (define code (bpf:insn-code insn))
@@ -285,7 +283,7 @@
         ; mov32 for zext
         (emit_zext_32 rd ctx)
         (begin
-          (emit (if is64 (rv_addi rd rs 0) (rv_addiw rd rs 0)) ctx)
+          (emit_mv rd rs ctx)
           (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
             (emit_zext_32 rd ctx))))]
 
@@ -293,35 +291,42 @@
     [((BPF_ALU BPF_ADD BPF_X)
       (BPF_ALU64 BPF_ADD BPF_X))
 
-      (emit (if is64 (rv_add rd rd rs) (rv_addw rd rd rs)) ctx)
+      (emit_add rd rd rs ctx)
+
       (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx)))]
 
     [((BPF_ALU BPF_SUB BPF_X)
       (BPF_ALU64 BPF_SUB BPF_X))
 
-      (emit (if is64 (rv_sub rd rd rs) (rv_subw rd rd rs)) ctx)
+      (if is64
+        (emit_sub rd rd rs ctx)
+        (emit_subw rd rd rs ctx))
+
       (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx)))]
 
     [((BPF_ALU BPF_AND BPF_X)
       (BPF_ALU64 BPF_AND BPF_X))
 
-      (emit (rv_and rd rd rs) ctx)
+      (emit_and rd rd rs ctx)
+
       (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx)))]
 
     [((BPF_ALU BPF_OR BPF_X)
       (BPF_ALU64 BPF_OR BPF_X))
 
-      (emit (rv_or rd rd rs) ctx)
+      (emit_or rd rd rs ctx)
+
       (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx)))]
 
     [((BPF_ALU BPF_XOR BPF_X)
       (BPF_ALU64 BPF_XOR BPF_X))
 
-      (emit (rv_xor rd rd rs) ctx)
+      (emit_xor rd rd rs ctx)
+
       (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx)))]
 
@@ -371,7 +376,7 @@
     [((BPF_ALU BPF_NEG)
       (BPF_ALU64 BPF_NEG))
 
-      (emit (if is64 (rv_sub rd RV_REG_ZERO rd) (rv_subw rd RV_REG_ZERO rd)) ctx)
+      (emit_sub rd RV_REG_ZERO rd ctx)
       (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx)))]
 
@@ -379,8 +384,8 @@
     [((BPF_ALU BPF_END BPF_FROM_LE))
       (cond
         [(equal? imm (bv 16 32))
-          (emit (rv_slli rd rd 48) ctx)
-          (emit (rv_srli rd rd 48) ctx)]
+          (emit_slli rd rd (bv 48 32) ctx)
+          (emit_srli rd rd (bv 48 32) ctx)]
         [(equal? imm (bv 32 32))
           (when (! (->prog->aux->verifier_zext ctx))
             (emit_zext_32 rd ctx))]
@@ -415,49 +420,49 @@
       ;       (emit (rv_andi rd rd #xff) ctx))
       ;     (emit (rv_slli rd rd 24) ctx)
       ;     (emit (rv_or rd rd RV_REG_T1) ctx)]
-     (emit (rv_addi RV_REG_T2 RV_REG_ZERO 0) ctx)
+     (emit_li RV_REG_T2 (bv 0 32) ctx)
 
-     (emit (rv_andi RV_REG_T1 rd #xff) ctx)
-     (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_T1) ctx)
-     (emit (rv_slli RV_REG_T2 RV_REG_T2 8) ctx)
-     (emit (rv_srli rd rd 8) ctx)
+     (emit_andi RV_REG_T1 rd (bv #xff 32) ctx)
+     (emit_add RV_REG_T2 RV_REG_T2 RV_REG_T1 ctx)
+     (emit_slli RV_REG_T2 RV_REG_T2 (bv 8 32) ctx)
+     (emit_srli rd rd (bv 8 32) ctx)
 
      (when (! (equal? imm (bv 16 32)))
-       (emit (rv_andi RV_REG_T1 rd #xff) ctx)
-       (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_T1) ctx)
-       (emit (rv_slli RV_REG_T2 RV_REG_T2 8) ctx)
-       (emit (rv_srli rd rd 8) ctx)
+       (emit_andi RV_REG_T1 rd (bv #xff 32) ctx)
+       (emit_add RV_REG_T2 RV_REG_T2 RV_REG_T1 ctx)
+       (emit_slli RV_REG_T2 RV_REG_T2 (bv 8 32) ctx)
+       (emit_srli rd rd (bv 8 32) ctx)
 
-       (emit (rv_andi RV_REG_T1 rd #xff) ctx)
-       (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_T1) ctx)
-       (emit (rv_slli RV_REG_T2 RV_REG_T2 8) ctx)
-       (emit (rv_srli rd rd 8) ctx)
+       (emit_andi RV_REG_T1 rd (bv #xff 32) ctx)
+       (emit_add RV_REG_T2 RV_REG_T2 RV_REG_T1 ctx)
+       (emit_slli RV_REG_T2 RV_REG_T2 (bv 8 32) ctx)
+       (emit_srli rd rd (bv 8 32) ctx)
 
        (when (! (equal? imm (bv 32 32)))
-         (emit (rv_andi RV_REG_T1 rd #xff) ctx)
-         (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_T1) ctx)
-         (emit (rv_slli RV_REG_T2 RV_REG_T2 8) ctx)
-         (emit (rv_srli rd rd 8) ctx)
+         (emit_andi RV_REG_T1 rd (bv #xff 32) ctx)
+         (emit_add RV_REG_T2 RV_REG_T2 RV_REG_T1 ctx)
+         (emit_slli RV_REG_T2 RV_REG_T2 (bv 8 32) ctx)
+         (emit_srli rd rd (bv 8 32) ctx)
 
-         (emit (rv_andi RV_REG_T1 rd #xff) ctx)
-         (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_T1) ctx)
-         (emit (rv_slli RV_REG_T2 RV_REG_T2 8) ctx)
-         (emit (rv_srli rd rd 8) ctx)
+         (emit_andi RV_REG_T1 rd (bv #xff 32) ctx)
+         (emit_add RV_REG_T2 RV_REG_T2 RV_REG_T1 ctx)
+         (emit_slli RV_REG_T2 RV_REG_T2 (bv 8 32) ctx)
+         (emit_srli rd rd (bv 8 32) ctx)
 
-         (emit (rv_andi RV_REG_T1 rd #xff) ctx)
-         (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_T1) ctx)
-         (emit (rv_slli RV_REG_T2 RV_REG_T2 8) ctx)
-         (emit (rv_srli rd rd 8) ctx)
+         (emit_andi RV_REG_T1 rd (bv #xff 32) ctx)
+         (emit_add RV_REG_T2 RV_REG_T2 RV_REG_T1 ctx)
+         (emit_slli RV_REG_T2 RV_REG_T2 (bv 8 32) ctx)
+         (emit_srli rd rd (bv 8 32) ctx)
 
-         (emit (rv_andi RV_REG_T1 rd #xff) ctx)
-         (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_T1) ctx)
-         (emit (rv_slli RV_REG_T2 RV_REG_T2 8) ctx)
-         (emit (rv_srli rd rd 8) ctx)))
+         (emit_andi RV_REG_T1 rd (bv #xff 32) ctx)
+         (emit_add RV_REG_T2 RV_REG_T2 RV_REG_T1 ctx)
+         (emit_slli RV_REG_T2 RV_REG_T2 (bv 8 32) ctx)
+         (emit_srli rd rd (bv 8 32) ctx)))
 
-     (emit (rv_andi RV_REG_T1 rd #xff) ctx)
-     (emit (rv_add RV_REG_T2 RV_REG_T2 RV_REG_T1) ctx)
+     (emit_andi RV_REG_T1 rd (bv #xff 32) ctx)
+     (emit_add RV_REG_T2 RV_REG_T2 RV_REG_T1 ctx)
 
-     (emit (rv_addi rd RV_REG_T2 0) ctx)]
+     (emit_mv rd RV_REG_T2 ctx)]
 
     ; dst = imm
     [((BPF_ALU BPF_MOV BPF_K)
@@ -473,10 +478,10 @@
 
       (cond
         [(is_12b_int imm)
-          (emit (if is64 (rv_addi rd rd imm) (rv_addiw rd rd imm)) ctx)]
+          (emit_addi rd rd imm ctx)]
         [else
           (emit_imm RV_REG_T1 imm ctx)
-          (emit (if is64 (rv_add rd rd RV_REG_T1) (rv_addw rd rd RV_REG_T1)) ctx)])
+          (emit_add rd rd RV_REG_T1 ctx)])
       (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx))]
 
@@ -485,12 +490,10 @@
 
       (cond
         [(is_12b_int (bvneg imm))
-          (emit (if is64 (rv_addi rd rd (bvneg imm))
-                         (rv_addiw rd rd (bvneg imm))) ctx)]
+          (emit_addi rd rd (bvneg imm) ctx)]
         [else
           (emit_imm RV_REG_T1 imm ctx)
-          (emit (if is64 (rv_sub rd rd RV_REG_T1)
-                         (rv_subw rd rd RV_REG_T1)) ctx)])
+          (emit_sub rd rd RV_REG_T1 ctx)])
       (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx))]
 
@@ -499,10 +502,10 @@
 
       (cond
         [(is_12b_int imm)
-          (emit (rv_andi rd rd imm) ctx)]
+          (emit_andi rd rd imm ctx)]
         [else
           (emit_imm RV_REG_T1 imm ctx)
-          (emit (rv_and rd rd RV_REG_T1) ctx)])
+          (emit_and rd rd RV_REG_T1 ctx)])
       (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx))]
 
@@ -513,7 +516,7 @@
           (emit (rv_ori rd rd imm) ctx)]
         [else
           (emit_imm RV_REG_T1 imm ctx)
-          (emit (rv_or rd rd RV_REG_T1) ctx)])
+          (emit_or rd rd RV_REG_T1 ctx)])
       (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx))]
 
@@ -524,7 +527,7 @@
           (emit (rv_xori rd rd imm) ctx)]
         [else
           (emit_imm RV_REG_T1 imm ctx)
-          (emit (rv_xor rd rd RV_REG_T1) ctx)])
+          (emit_xor rd rd RV_REG_T1 ctx)])
       (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx))]
 
@@ -558,21 +561,28 @@
     [((BPF_ALU BPF_LSH BPF_K)
       (BPF_ALU64 BPF_LSH BPF_K))
 
-      (emit (if is64 (rv_slli rd rd imm) (rv_slliw rd rd imm)) ctx)
+      (emit_slli rd rd imm ctx)
+
       (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx)))]
 
     [((BPF_ALU BPF_RSH BPF_K)
       (BPF_ALU64 BPF_RSH BPF_K))
 
-      (emit (if is64 (rv_srli rd rd imm) (rv_srliw rd rd imm)) ctx)
+      (if is64
+        (emit_srli rd rd imm ctx)
+        (emit (rv_srliw rd rd imm) ctx))
+
       (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
         (emit_zext_32 rd ctx)))]
 
     [((BPF_ALU BPF_ARSH BPF_K)
       (BPF_ALU64 BPF_ARSH BPF_K))
 
-     (emit (if is64 (rv_srai rd rd imm) (rv_sraiw rd rd imm)) ctx)
+      (if is64
+        (emit_srai rd rd imm ctx)
+        (emit (rv_sraiw rd rd imm) ctx))
+
      (PATCH (when (&& (! is64) (! (->prog->aux->verifier_zext ctx)))
        (emit_zext_32 rd ctx)))]
 
@@ -616,11 +626,11 @@
           [else
             (set!-values (rd rs) (emit_zext_32_rd_rs rd rs ctx))])
         (define e (context-ninsns ctx))
-        (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32)))))
+        (set! rvoff (bvsub rvoff (ninsns_rvoff (bvsub e s)))))
       (cond
         [(equal? (BPF_OP code) 'BPF_JSET)
           (set! rvoff (bvsub rvoff (bv 4 32)))
-          (emit (rv_and RV_REG_T1 rd rs) ctx)
+          (emit_and RV_REG_T1 rd rs ctx)
           (emit_branch 'BPF_JNE RV_REG_T1 RV_REG_ZERO insn-idx rvoff ctx)]
         [else
           (emit_branch (BPF_OP code) rd rs insn-idx rvoff ctx)])]
@@ -663,7 +673,7 @@
           [else
             (set! rd (emit_zext_32_rd_t1 rd ctx))]))
       (define e (context-ninsns ctx))
-      (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
+      (set! rvoff (bvsub rvoff (ninsns_rvoff (bvsub e s))))
       (emit_branch (BPF_OP code) rd rs insn-idx rvoff ctx)]
 
     [((BPF_JMP BPF_JSET BPF_K)
@@ -673,17 +683,17 @@
       (define s (context-ninsns ctx))
       (cond
         [(is_12b_int imm)
-          (emit (rv_andi RV_REG_T1 rd imm) ctx)]
+          (emit_andi RV_REG_T1 rd imm ctx)]
         [else
           (emit_imm RV_REG_T1 imm ctx)
-          (emit (rv_and RV_REG_T1 rd RV_REG_T1) ctx)])
+          (emit_and RV_REG_T1 rd RV_REG_T1 ctx)])
       ; For jset32, we should clear the upper 32 bits of t1, but
       ; sign-extension is sufficient here and saves one instruction,
       ; as t1 is used only in comparison against zero.
       (when (&& (! is64) (bvslt imm (bv 0 32)))
-        (emit (rv_addiw RV_REG_T1 RV_REG_T1 0) ctx))
+        (emit_addiw RV_REG_T1 RV_REG_T1 (bv 0 32) ctx))
       (define e (context-ninsns ctx))
-      (set! rvoff (bvsub rvoff (bvshl (bvsub e s) (bv 2 32))))
+      (set! rvoff (bvsub rvoff (ninsns_rvoff (bvsub e s))))
       (emit_branch 'BPF_JNE RV_REG_T1 RV_REG_ZERO insn-idx rvoff ctx)]
 
     ; function call
@@ -725,7 +735,7 @@
           (emit (rv_lbu rd off rs) ctx)]
         [else
           (emit_imm RV_REG_T1 off ctx)
-          (emit (rv_add RV_REG_T1 RV_REG_T1 rs) ctx)
+          (emit_add RV_REG_T1 RV_REG_T1 rs ctx)
           (emit (rv_lbu rd 0 RV_REG_T1) ctx)])]
 
     [((BPF_LDX BPF_MEM BPF_H))
@@ -734,7 +744,7 @@
           (emit (rv_lhu rd off rs) ctx)]
         [else
           (emit_imm RV_REG_T1 off ctx)
-          (emit (rv_add RV_REG_T1 RV_REG_T1 rs) ctx)
+          (emit_add RV_REG_T1 RV_REG_T1 rs ctx)
           (emit (rv_lhu rd 0 RV_REG_T1) ctx)])]
 
     [((BPF_LDX BPF_MEM BPF_W))
@@ -743,17 +753,17 @@
           (emit (rv_lwu rd off rs) ctx)]
         [else
           (emit_imm RV_REG_T1 off ctx)
-          (emit (rv_add RV_REG_T1 RV_REG_T1 rs) ctx)
+          (emit_add RV_REG_T1 RV_REG_T1 rs ctx)
           (emit (rv_lwu rd 0 RV_REG_T1) ctx)])]
 
     [((BPF_LDX BPF_MEM BPF_DW))
       (cond
         [(is_12b_int (sign-extend off (bitvector 32)))
-          (emit (rv_ld rd off rs) ctx)]
+          (emit_ld rd (sign-extend off (bitvector 32)) rs ctx)]
         [else
           (emit_imm RV_REG_T1 off ctx)
-          (emit (rv_add RV_REG_T1 RV_REG_T1 rs) ctx)
-          (emit (rv_ld rd 0 RV_REG_T1) ctx)])]
+          (emit_add RV_REG_T1 RV_REG_T1 rs ctx)
+          (emit_ld rd (bv 0 32) RV_REG_T1 ctx)])]
 
     ; ST: *(size *)(dst + off) = imm
     [((BPF_ST BPF_MEM BPF_B))
@@ -763,7 +773,7 @@
           (emit (rv_sb rd off RV_REG_T1) ctx)]
         [else
           (emit_imm RV_REG_T2 off ctx)
-          (emit (rv_add RV_REG_T2 RV_REG_T2 rd) ctx)
+          (emit_add RV_REG_T2 RV_REG_T2 rd ctx)
           (emit (rv_sb RV_REG_T2 0 RV_REG_T1) ctx)])]
 
     [((BPF_ST BPF_MEM BPF_H))
@@ -773,28 +783,28 @@
           (emit (rv_sh rd off RV_REG_T1) ctx)]
         [else
           (emit_imm RV_REG_T2 off ctx)
-          (emit (rv_add RV_REG_T2 RV_REG_T2 rd) ctx)
+          (emit_add RV_REG_T2 RV_REG_T2 rd ctx)
           (emit (rv_sh RV_REG_T2 0 RV_REG_T1) ctx)])]
 
     [((BPF_ST BPF_MEM BPF_W))
       (emit_imm RV_REG_T1 imm ctx)
       (cond
         [(is_12b_int (sign-extend off (bitvector 32)))
-          (emit (rv_sw rd off RV_REG_T1) ctx)]
+          (emit_sw rd (sign-extend off (bitvector 32)) RV_REG_T1 ctx)]
         [else
           (emit_imm RV_REG_T2 off ctx)
-          (emit (rv_add RV_REG_T2 RV_REG_T2 rd) ctx)
-          (emit (rv_sw RV_REG_T2 0 RV_REG_T1) ctx)])]
+          (emit_add RV_REG_T2 RV_REG_T2 rd ctx)
+          (emit_sw RV_REG_T2 (bv 0 32) RV_REG_T1 ctx)])]
 
     [((BPF_ST BPF_MEM BPF_DW))
       (emit_imm RV_REG_T1 imm ctx)
       (cond
         [(is_12b_int (sign-extend off (bitvector 32)))
-          (emit (rv_sd rd off RV_REG_T1) ctx)]
+          (emit_sd rd (sign-extend off (bitvector 32)) RV_REG_T1 ctx)]
         [else
           (emit_imm RV_REG_T2 off ctx)
-          (emit (rv_add RV_REG_T2 RV_REG_T2 rd) ctx)
-          (emit (rv_sd RV_REG_T2 0 RV_REG_T1) ctx)])]
+          (emit_add RV_REG_T2 RV_REG_T2 rd ctx)
+          (emit_sd RV_REG_T2 (bv 0 32) RV_REG_T1 ctx)])]
 
     ; STX: *(size *)(dst + off) = src */
     [((BPF_STX BPF_MEM BPF_B))
@@ -803,7 +813,7 @@
           (emit (rv_sb rd off rs) ctx)]
         [else
           (emit_imm RV_REG_T1 off ctx)
-          (emit (rv_add RV_REG_T1 RV_REG_T1 rd) ctx)
+          (emit_add RV_REG_T1 RV_REG_T1 rd ctx)
           (emit (rv_sb RV_REG_T1 0 rs) ctx)])]
 
     [((BPF_STX BPF_MEM BPF_H))
@@ -812,26 +822,26 @@
           (emit (rv_sh rd off rs) ctx)]
         [else
           (emit_imm RV_REG_T1 off ctx)
-          (emit (rv_add RV_REG_T1 RV_REG_T1 rd) ctx)
+          (emit_add RV_REG_T1 RV_REG_T1 rd ctx)
           (emit (rv_sh RV_REG_T1 0 rs) ctx)])]
 
     [((BPF_STX BPF_MEM BPF_W))
       (cond
         [(is_12b_int (sign-extend off (bitvector 32)))
-          (emit (rv_sw rd off rs) ctx)]
+          (emit_sw rd (sign-extend off (bitvector 32)) rs ctx)]
         [else
           (emit_imm RV_REG_T1 off ctx)
-          (emit (rv_add RV_REG_T1 RV_REG_T1 rd) ctx)
-          (emit (rv_sw RV_REG_T1 0 rs) ctx)])]
+          (emit_add RV_REG_T1 RV_REG_T1 rd ctx)
+          (emit_sw RV_REG_T1 (bv 0 32) rs ctx)])]
 
     [((BPF_STX BPF_MEM BPF_DW))
       (cond
         [(is_12b_int (sign-extend off (bitvector 32)))
-          (emit (rv_sd rd off rs) ctx)]
+          (emit_sd rd (sign-extend off (bitvector 32)) rs ctx)]
         [else
           (emit_imm RV_REG_T1 off ctx)
-          (emit (rv_add RV_REG_T1 RV_REG_T1 rd) ctx)
-          (emit (rv_sd RV_REG_T1 0 rs) ctx)])]
+          (emit_add RV_REG_T1 RV_REG_T1 rd ctx)
+          (emit_sd RV_REG_T1 (bv 0 32) rs ctx)])]
 
     [((BPF_STX BPF_XADD BPF_W)
       (BPF_STX BPF_XADD BPF_DW))
@@ -839,10 +849,10 @@
       (when (! (bvzero? off))
         (cond
           [(is_12b_int (sign-extend off (bitvector 32)))
-            (emit (rv_addi RV_REG_T1 rd off) ctx)]
+            (emit_addi RV_REG_T1 rd (sign-extend off (bitvector 32)) ctx)]
           [else
             (emit_imm RV_REG_T1 off ctx)
-            (emit (rv_add RV_REG_T1 RV_REG_T1 rd) ctx)])
+            (emit_add RV_REG_T1 RV_REG_T1 rd ctx)])
         (set! rd RV_REG_T1))
 
       (if (equal? (BPF_SIZE code) 'BPF_W)

@@ -1,6 +1,7 @@
 #lang rosette
 
-(require (prefix-in core: serval/lib/core))
+(require (prefix-in core: serval/lib/core)
+         "env.rkt")
 
 (provide make-hybrid-memmgr copy-hybrid-memmgr hybrid-memmgr-stackbase hybrid-memmgr-stacksize
          stack-addr? heap-addr? hybrid-memmgr-trace-equal? enable-stack-addr-symopt
@@ -8,11 +9,11 @@
          set-hybrid-memmgr-stacksize! (struct-out call-event)
          hybrid-memmgr-get-fresh-bytes)
 
-(define enable-stack-addr-symopt (make-parameter #t))
+(define enable-stack-addr-symopt (make-environment-flag "ENABLE_STACK_ADDR_SYMOPT" #t))
 
 (struct load-event (addr size result) #:transparent)
 (struct store-event (addr size value) #:transparent)
-(struct call-event (fn arg1 arg2 arg3 arg4 arg5) #:transparent)
+(struct call-event (fn result arg1 arg2 arg3 arg4 arg5) #:transparent)
 (struct atomic-begin-event () #:transparent)
 (struct atomic-end-event () #:transparent)
 
@@ -54,7 +55,8 @@
   (define stackbase (hybrid-memmgr-stackbase memmgr))
   (define stacksize (hybrid-memmgr-stacksize memmgr))
   (define bpf-stack-range (hybrid-memmgr-bpf-stack-range memmgr))
-  (&& (bvule (bvadd address size) stackbase)
+  (&& (! (bvzero? stacksize))
+      (bvule (bvadd address size) stackbase)
       (bvuge address (bvsub stackbase stacksize))
       (|| (bvuge address (bvadd stackbase (cdr bpf-stack-range)))
           (bvule (bvadd address size) (bvadd stackbase (car bpf-stack-range))))))
@@ -67,7 +69,8 @@
   (define stackbase (hybrid-memmgr-stackbase memmgr))
   (define stacksize (hybrid-memmgr-stacksize memmgr))
   (define bpf-stack-range (hybrid-memmgr-bpf-stack-range memmgr))
-  (|| (bvule (bvadd address size) (bvsub stackbase stacksize))
+  (|| (bvzero? stacksize)
+      (bvule (bvadd address size) (bvsub stackbase stacksize))
       (bvuge address stackbase)
       (&& (bvuge address (bvadd stackbase (car bpf-stack-range)))
           (bvule (bvadd address size) (bvadd stackbase (cdr bpf-stack-range))))))

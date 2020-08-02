@@ -29,7 +29,7 @@
 
 (define current-context (make-parameter #f))
 
-(struct context (insns offset len aux) #:mutable #:transparent)
+(struct context (image insns offset len aux) #:mutable #:transparent)
 
 (define STACK_ALIGNMENT 8)
 (define SCRATCH_SIZE 96)
@@ -910,6 +910,18 @@
     [(BPF_B) 1]
     [(BPF_DW) 4])) ; imm32
 
+; Push the scratch register on top of the stack.
+(define (emit_push_r64 src pprog)
+  ; mov ecx,dword ptr [ebp+off]
+  (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_ECX) (STACK_VAR (hi src)))
+  ; push ecx
+  (EMIT1 #x51)
+
+  ; mov ecx,dword ptr [ebp+off]
+  (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_ECX) (STACK_VAR (lo src)))
+  ; push ecx
+  (EMIT1 #x51))
+
 
 (define (get_cond_jmp_opcode op is_cmp_lo)
   (case op
@@ -952,12 +964,14 @@
   (define imm32 (bpf:insn-imm insn))
   (define off32 (sign-extend off (bitvector 32)))
 
+  (define image (context-image &prog))
   (define addrs (context-offset &prog))
   (define is64 (equal? (BPF_CLASS code) 'BPF_ALU64))
   (define dstk (! (equal? dst_reg BPF_REG_AX)))
   (define sstk (! (equal? src_reg BPF_REG_AX)))
   (define dst (if dst_reg (bpf2ia32 dst_reg) #f))
   (define src (if src_reg (bpf2ia32 src_reg) #f))
+  (define r0 (bpf2ia32 BPF_REG_0))
 
   (define (emit_cond_jmp)
     (define jmp_cond (get_cond_jmp_opcode (BPF_OP code) #f))
@@ -1245,6 +1259,42 @@
             (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EDX) (STACK_VAR (hi dst)))
             (EMIT2 #x89 (add_2reg #xC0 (hi dst) IA32_EDX)))])]
 
+    [((BPF_JMP BPF_CALL))
+      (define r1 (bpf2ia32 BPF_REG_1))
+      (define r2 (bpf2ia32 BPF_REG_2))
+      (define r3 (bpf2ia32 BPF_REG_3))
+      (define r4 (bpf2ia32 BPF_REG_4))
+      (define r5 (bpf2ia32 BPF_REG_5))
+
+      (define func (bvadd (extract 31 0 (bpf-jit-call-base))
+                          imm32))
+      (define jmp_offset (bvsub func (bvadd image (addrs i))))
+
+      ; mov eax,dword ptr [ebp+off]
+      (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_EAX)
+             (STACK_VAR (lo r1)))
+      ; mov edx,dword ptr [ebp+off]
+      (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_EDX)
+             (STACK_VAR (hi r1)))
+
+      (emit_push_r64 r5 &prog)
+      (emit_push_r64 r4 &prog)
+      (emit_push_r64 r3 &prog)
+      (emit_push_r64 r2 &prog)
+
+      (EMIT1_off32 #xE8 (bvadd jmp_offset (bv 9 32)))
+
+      ; mov dword ptr [ebp+off],eax
+      (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EAX)
+             (STACK_VAR (lo r0)))
+      ; mov dword ptr [ebp+off],edx
+      (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EDX)
+             (STACK_VAR (hi r0)))
+
+      ; add esp,32
+      (EMIT3 #x83 (add_1reg #xC0 IA32_ESP) 32)]
+
+    ; cond jump
     [((BPF_JMP BPF_JEQ BPF_X)
       (BPF_JMP BPF_JNE BPF_X)
       (BPF_JMP BPF_JGT BPF_X)

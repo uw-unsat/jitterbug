@@ -1,6 +1,8 @@
 #lang rosette
 
 (require
+  "linux.rkt"
+  serval/lib/bvarith
   serval/lib/solver)
 
 (provide (all-defined-out))
@@ -13,6 +15,13 @@
 (define (bvmulhu x y)
   (define n (bitvector-size (type-of x)))
   (extract (sub1 (+ n n)) n (bvmul (zero-extend x (bitvector (+ n n))) (zero-extend y (bitvector (+ n n))))))
+
+; x != 0 ==> (x >> __ffs(x)) << __ffs(x) == x && __ffs(x) < 64
+(verify (assert
+  (implies (! (bvzero? x))
+    (&& (bveq (bvshl (bvlshr x (__ffs x)) (__ffs x)) x)
+        (! (bvzero? (bv-bit (__ffs x) x)))
+        (bvult (__ffs x) (bv 64 64))))))
 
 ; bvmul is commutative
 (verify (assert

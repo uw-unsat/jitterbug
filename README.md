@@ -14,9 +14,10 @@ We have used this tool to aid the development in the following ways:
 - find bugs, validate patches, and write test cases:
   + [arm, bpf: Fix bugs with ALU64 {RSH, ARSH} BPF_K shift by 0](https://git.kernel.org/linus/bb9562cf5c67)
   + [arm, bpf: Fix offset overflow for BPF_MEM BPF_DW](https://git.kernel.org/linus/4178417cc535)
+  + [arm64: insn: Fix two bugs in encoding 32-bit logical immediates](https://git.kernel.org/linus/579d1b3faa3735e781ff74aac0afd598515dbc63)
   + [bpf, riscv: clear high 32 bits for ALU32 add/sub/neg/lsh/rsh/arsh](https://git.kernel.org/linus/1e692f09e091)
-  + [bpf, riscv: Fix tail call count off by one in RV32 BPF JIT](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=3f2eaebb5450b417aa119f47c9b805db311ad3b8)
-  + [bpf, riscv: Fix stack layout of JITed code on RV32](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=91f658587a962378a410cc7dc90e122a4ccd7cf3)
+  + [bpf, riscv: Fix tail call count off by one in RV32 BPF JIT](https://git.kernel.org/linus/745abfaa9eafa597d31fdf24a3249e5206a98768)
+  + [bpf, riscv: Fix stack layout of JITed code on RV32](https://git.kernel.org/linus/91f658587a962378a410cc7dc90e122a4ccd7cf3)
   + [riscv, bpf: Fix offset range checking for auipc+jalr on RV64](https://git.kernel.org/linus/489553dd13a8)
   + [bpf, x32: Fix bug with ALU64 {LSH, RSH, ARSH} BPF_K shift by 0](https://git.kernel.org/linus/6fa632e719ee)
   + [bpf, x32: Fix bug with ALU64 {LSH, RSH, ARSH} BPF_X shift by 0](https://git.kernel.org/linus/68a8357ec15b)
@@ -29,18 +30,25 @@ We have used this tool to aid the development in the following ways:
   + [selftests: bpf: add tests for shifts by zero](https://git.kernel.org/linus/ac8786c72eba)
 
 - add optimizations:
-  + [bpf, arm: Optimize ALU64 ARSH X using orrpl conditional instruction](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=cf48db69bdfad2930b95fd51d64444e5a7b469ae)
-  + [bpf, arm: Optimize ALU ARSH K using asr immediate instruction](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=c648c9c7429e979ca081359f39b6902aed92d490)
+  + [bpf, arm: Optimize ALU64 ARSH X using orrpl conditional instruction](https://git.kernel.org/linus/cf48db69bdfad2930b95fd51d64444e5a7b469ae)
+  + [bpf, arm: Optimize ALU ARSH K using asr immediate instruction](https://git.kernel.org/linus/c648c9c7429e979ca081359f39b6902aed92d490)
+  + [bpf, arm64: Optimize AND,OR,XOR,JSET BPF_K using arm64 logical immediates](https://git.kernel.org/linus/fd49591cb49b72abd1b665222a635ccb17df7923)
+  + [bpf, arm64: Optimize ADD,SUB,JMP BPF_K using arm64 add/sub immediates](https://git.kernel.org/linus/fd868f14818901821699988fdac680ebd80cd360)
   + [bpf, riscv: Enable zext optimization for more RV64G ALU ops](https://git.kernel.org/linus/46dd3d7d287b)
-  + [Merge branch 'bpf-rv64-jit'](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=a085a1eeea5ed4ae7aa0c19031449ade145110fc)
-    + [bpf, riscv: Enable missing verifier_zext optimizations on RV64](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=0224b2acea0f9e3908d33e27b2dcb4e04686e997)
-    + [bpf, riscv: Optimize FROM_LE using verifier_zext on RV64](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=21a099abb765c3754689e1f7ca4536fa560112d0)
-    + [bpf, riscv: Optimize BPF_JMP BPF_K when imm == 0 on RV64](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=ca349a6a104e58479defdc08ce56472a48f7cb81)
-    + [bpf, riscv: Optimize BPF_JSET BPF_K using andi on RV64](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=073ca6a0369e09c586a103e665f2dd67f1c71444)
+  + [Merge branch 'bpf-rv64-jit'](https://git.kernel.org/linus/a085a1eeea5ed4ae7aa0c19031449ade145110fc)
+    + [bpf, riscv: Enable missing verifier_zext optimizations on RV64](https://git.kernel.org/linus/0224b2acea0f9e3908d33e27b2dcb4e04686e997)
+    + [bpf, riscv: Optimize FROM_LE using verifier_zext on RV64](https://git.kernel.org/linus/21a099abb765c3754689e1f7ca4536fa560112d0)
+    + [bpf, riscv: Optimize BPF_JMP BPF_K when imm == 0 on RV64](https://git.kernel.org/linus/ca349a6a104e58479defdc08ce56472a48f7cb81)
+    + [bpf, riscv: Optimize BPF_JSET BPF_K using andi on RV64](https://git.kernel.org/linus/073ca6a0369e09c586a103e665f2dd67f1c71444)
+
+- add RVC support to the RV64 JIT:
+  + [bpf, riscv: Modify JIT ctx to support compressed instructions](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=bfabff3cb0fef366086c64f24be8ab316a355b99)
+  + [bpf, riscv: Add encodings for compressed instructions](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=804ec72c68c8477b8713a1e8f8eda120d3471031)
+  + [bpf, riscv: Use compressed instructions in the rv64 JIT](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=18a4d8c97b841632920c16a6fa9216d1214f3db7)
 
 ## How to install dependencies
 
-- Download and install [Racket] (tested on v7.6 and v7.6-cs).
+- Download and install [Racket] (tested on v7.7 and v7.7-cs).
 
 - Uninstall any previous versions of Serval:
 

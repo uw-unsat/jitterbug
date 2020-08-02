@@ -11,7 +11,7 @@
 (provide (all-defined-out))
 
 (define (code-size vec)
-  (* 4 (vector-length vec)))
+  (* 2 (vector-length vec)))
 
 (define (bpf-to-target-pc ctx target-pc-base bpf-pc)
   (define offsets (context-offset ctx))
@@ -20,16 +20,13 @@
   (define ty (type-of target-pc-base))
   (bvadd
     target-pc-base
-    (bvmul (zero-extend (prev-offset bpf-pc) ty) (bv 4 ty))))
+    (bvshl (zero-extend (prev-offset bpf-pc) ty) (bv 1 ty))))
 
 (define (riscv-init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
   (define-symbolic* seen (~> (bitvector 5) boolean?))
 
-  (define ninsns
-    (if (equal? (bv 0 32) insn-idx)
-        (bv 0 32)
-        (offsets (bvsub insn-idx (bv 1 32)))))
+  (define-symbolic* ninsns (bitvector 32))
 
   ; The epilogue is at the end of the program.
   (define epilogue-offset (offsets (bvsub1 program-length)))
@@ -43,6 +40,16 @@
   (define ctx (context program-length (vector) insns-addr ninsns epilogue-offset stack_size offsets
                        seen saved-regs aux))
   ctx)
+
+(define (riscv-ctx-valid? ctx insn-idx)
+  (define ninsns (context-ninsns ctx))
+  (define offset (context-offset ctx))
+
+  (&&
+    (equal? ninsns
+            (if (equal? (bv 0 32) insn-idx)
+                (bv 0 32)
+                (offset (bvsub1 insn-idx))))))
 
 (define (run-jitted-code base riscv-cpu insns)
   (for/all ([insns insns #:exhaustive])
@@ -60,7 +67,7 @@
         (interpret-program base cpu insns)))))
 
 (define (fetch instrs base pc)
-  (define n (bitvector->natural (bvudiv (bvsub pc base) (bv 4 (type-of pc)))))
+  (define n (bitvector->natural (bvudiv (bvsub pc base) (bv 2 (type-of pc)))))
   (cond
     [(term? n) #f]
     [(< n (vector-length instrs)) (vector-ref instrs n)]

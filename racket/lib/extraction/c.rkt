@@ -274,3 +274,24 @@
         (emit-epilogue))
       (syntax/loc stx
         (define (id args ...) expr))]))
+
+(define-syntax (define-rvenc/16 stx)
+  (syntax-case stx ()
+    [(_ (id args ...) expr)
+      (let ([port (emit-port)])
+        (define (fmt-arg x)
+          (define s (~a (syntax->datum x)))
+          (define lst (regexp-match #px"imm(\\d+)" s))
+          (match lst
+            [(list _ width)
+             (define size 32)
+             (format "u~a ~a" size s)]
+            [_ (format "u8 ~a" s)]))
+        (emit-prologue #'id)
+        (fprintf port "static inline u16 ~a(~a)\n{\n\treturn ~a;\n}\n"
+          (syntax->datum #'id)
+          (string-join (map fmt-arg (syntax->list #'(args ...))) ", ")
+          (fmt #'expr))
+        (emit-epilogue))
+      (syntax/loc stx
+        (define (id args ...) expr))]))

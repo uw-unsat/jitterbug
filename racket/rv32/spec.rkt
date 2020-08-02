@@ -66,7 +66,7 @@
 
   ; Generate trace event
   (hybrid-memmgr-trace-event! memmgr
-    (apply call-event call-fn args))
+    (apply call-event call-fn result args))
 
   ; Execute a "ret" (pseudo)instruction.
   (riscv:interpret-insn cpu (rv_jalr RV_REG_ZERO RV_REG_RA 0))
@@ -95,7 +95,7 @@
 
   (&&
     ; Program counter is aligned.
-    (core:bvaligned? pc (bv 4 (type-of pc)))
+    (core:bvaligned? pc (bv 2 (type-of pc)))
 
     ; Stack pointer is aligned.
     (core:bvaligned? (riscv:gpr-ref cpu 'sp) (bv STACK_ALIGN 32))
@@ -142,12 +142,13 @@
   (&&
     ; PC is aligned.
     (core:bvaligned? pc (bv 4 (type-of pc)))
-    ; Registers are initially the values that must be saved.
-    (equal? (context-saved-regs ctx) (riscv:cpu-gprs cpu))
     ; Stack pointer is aligned.
     (core:bvaligned? (riscv:gpr-ref cpu 'sp) (bv STACK_ALIGN 32))
     ; Stack pointer points to base of stack.
     (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr))))
+
+(define (rv32-saved-regs-equal? ctx cpu)
+  (equal? (context-saved-regs ctx) (riscv:cpu-gprs cpu)))
 
 ; Things guaranteed by epilogue.
 (define (rv32-epilogue-guarantees ctx cpu)
@@ -196,13 +197,11 @@
   (cons bottom top))
 
 (define rv32-target (make-bpf-target
-  #:cpu-pc riscv:cpu-pc
   #:set-cpu-pc! riscv:set-cpu-pc!
   #:target-bitwidth 32
   #:init-cpu (riscv-init-cpu 32)
   #:abstract-regs (riscv-abstract-regs rv32_get_bpf_reg)
   #:abstract-tail-call-cnt (lambda (cpu) (bvsub (bv MAX_TAIL_CALL_CNT 32) (riscv:gpr-ref cpu RV_REG_TCC)))
-  #:cpu-memmgr riscv:cpu-memmgr
   #:simulate-call rv32-simulate-call
   #:cpu-invariants rv32-cpu-invariants
   #:init-cpu-invariants! rv32-init-cpu-invariants!
@@ -221,8 +220,19 @@
   #:bpf-stack-range rv32-bpf-stack-range
   #:function-alignment 4
   #:abstract-return-value (lambda (ctx cpu) (riscv:gpr-ref cpu 'a0))
+  #:saved-regs-equal? rv32-saved-regs-equal?
+  #:ctx-valid? riscv-ctx-valid?
 ))
 
 (define (check-jit code)
   (parameterize ([riscv:XLEN 32])
-    (verify-bpf-jit/32 code rv32-target)))
+
+    (cond
+      [(and (list? code) (memv 'BPF_END code))
+        (printf "Splitting RVC for ~v\n" code)
+        (parameterize ([CONFIG_RISCV_ISA_C #f])
+         (verify-bpf-jit/32 code rv32-target))
+        (parameterize ([CONFIG_RISCV_ISA_C #t])
+          (verify-bpf-jit/32 code rv32-target))]
+      [else
+        (verify-bpf-jit/32 code rv32-target)])))

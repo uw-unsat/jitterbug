@@ -34,17 +34,32 @@
   (define rs1 (insn-template-rs1 insn-template))
   (define rs2 (insn-template-rs2 insn-template))
   (define imm (insn-template-imm insn-template))
+
+  (set! rd ((interpret-reg) rd bpf-dst bpf-src))
+  (set! rs1 ((interpret-reg) rs1 bpf-dst bpf-src))
+  (set! rs2 ((interpret-reg) rs2 bpf-dst bpf-src))
+  (set! imm (interpret-imm imm bpf-imm))
+
   (case op
-    [(add sub sll srl sra or and xor slt sltu addw subw sllw srlw)
-      (riscv:rv_r_insn op
-        ((interpret-reg) rd bpf-dst bpf-src)
-        ((interpret-reg) rs1 bpf-dst bpf-src)
-        ((interpret-reg) rs2 bpf-dst bpf-src))]
-    [else
-      (riscv:rv_i_insn op
-        ((interpret-reg) rd bpf-dst bpf-src)
-        ((interpret-reg) rs1 bpf-dst bpf-src)
-        (interpret-imm imm bpf-imm))]))
+    [(add) (rv_add rd rs1 rs2)]
+    [(sub) (rv_sub rd rs1 rs2)]
+    [(sll) (rv_sll rd rs1 rs2)]
+    [(srl) (rv_srl rd rs1 rs2)]
+    [(sra) (rv_sra rd rs1 rs2)]
+    [(or) (rv_or rd rs1 rs2)]
+    [(and) (rv_and rd rs1 rs2)]
+    [(xor) (rv_xor rd rs1 rs2)]
+    [(slt) (rv_slt rd rs1 rs2)]
+    [(sltu) (rv_sltu rd rs1 rs2)]
+    [(addw) (rv_addw rd rs1 rs2)]
+    [(subw) (rv_subw rd rs1 rs2)]
+    [(sllw) (rv_sllw rd rs1 rs2)]
+    [(srlw) (rv_srlw rd rs1 rs2)]
+
+    [(addi) (rv_addi rd rs1 imm)]
+    [(slli) (rv_slli rd rs1 imm)]
+    [(srli) (rv_srli rd rs1 imm)]
+    [else (assert #f)]))
 
 (define (choose-insn)
   (define rv_ops '(add addi sub sll slli srl srli sra or and xor sltu))

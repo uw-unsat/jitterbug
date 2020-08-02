@@ -110,7 +110,7 @@
 
   ; Generate trace event
   (hybrid-memmgr-trace-event! memmgr
-    (apply call-event call-fn args))
+    (apply call-event call-fn result args))
 
   ; Execute a "return" instruction (br r30).
   (arm32:set-cpu-pc! cpu (arm32:cpu-gpr-ref cpu ARM_LR))
@@ -123,7 +123,6 @@
          (bv (* 8 3) 32))) ; Add enough space for pushing BPF_CALL arguments
 
 (define arm32-target (make-bpf-target
-  #:cpu-pc arm32:cpu-pc
   #:target-bitwidth 32
   #:init-cpu init-arm32-cpu
   #:simulate-call arm32-simulate-call
@@ -131,7 +130,6 @@
   #:cpu-invariants arm32-cpu-invariants
   #:init-cpu-invariants! arm32-init-cpu-invariants!
   #:abstract-regs cpu-abstract-regs
-  #:cpu-memmgr arm32:cpu-memmgr
   #:run-code run-jitted-code
   #:run-jit build_insn
   #:init-ctx init-ctx
@@ -139,7 +137,8 @@
   #:code-size code-size
   #:max-stack-usage arm32-max-stack-usage
   #:max-target-size #x800000
-  #:function-alignment 4))
+  #:function-alignment 4
+))
 
 (define (check-jit code)
   (verify-bpf-jit/32 code arm32-target))

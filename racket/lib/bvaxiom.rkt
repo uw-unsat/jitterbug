@@ -18,6 +18,20 @@
   (assumptions (cons e (assumptions)))
   (f x y))
 
+; Axiom for __ffs
+
+(define (ffs-uf x)
+  (define-symbolic ffs (~> (bitvector 64) (bitvector 64)))
+  ; __ffs(x) is undefined when x == 0
+  (assert (! (bvzero? x)))
+  (define res (ffs x))
+  ; __ffs(x) < 64
+  (assume (bvult (ffs x) (bv 64 64)))
+  ; ((x >> __ffs(x)) << __ffs(x)
+  (assume (bveq (bvshl (bvlshr x (ffs x)) (ffs x)) x))
+  ; the ffs bit is non-zero
+  (assume (! (bvzero? (core:bv-bit (ffs x) x))))
+  (ffs x))
 
 ; Axiom shared by 32- and 64-bit JITs.
 

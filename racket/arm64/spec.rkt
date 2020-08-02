@@ -83,7 +83,7 @@
 
   ; Generate trace event
   (hybrid-memmgr-trace-event! memmgr
-    (apply call-event call-fn args))
+    (apply call-event call-fn result args))
 
   ; Execute a "return" instruction (br r30).
   (arm64:interpret-insn cpu (arm64:br (arm64:integer->gpr 30)))
@@ -92,13 +92,11 @@
   (arm64:cpu-gpr-set! cpu (arm64:integer->gpr 0) result))
 
 (define arm64-target (make-bpf-target
-  #:cpu-pc arm64:cpu-pc-ref
   #:target-bitwidth 64
   #:init-cpu init-arm64-cpu
   #:simulate-call arm64-simulate-call
   #:cpu-invariants cpu-invariants
   #:abstract-regs cpu-abstract-regs
-  #:cpu-memmgr arm64:cpu-memmgr
   #:run-code run-jitted-code
   #:run-jit build_insn
   #:init-ctx init-ctx
@@ -106,7 +104,8 @@
   #:code-size code-size
   #:max-stack-usage (lambda (ctx) (bv 128 64))
   #:max-target-size #x100000 ; 2^20
-  #:function-alignment 4))
+  #:function-alignment 4
+))
 
 (define (check-jit code)
   (verify-bpf-jit/64 code arm64-target))
