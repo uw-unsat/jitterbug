@@ -42,9 +42,9 @@ We have used this tool to aid the development in the following ways:
     + [bpf, riscv: Optimize BPF_JSET BPF_K using andi on RV64](https://git.kernel.org/linus/073ca6a0369e09c586a103e665f2dd67f1c71444)
 
 - add RVC support to the RV64 JIT:
-  + [bpf, riscv: Modify JIT ctx to support compressed instructions](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=bfabff3cb0fef366086c64f24be8ab316a355b99)
-  + [bpf, riscv: Add encodings for compressed instructions](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=804ec72c68c8477b8713a1e8f8eda120d3471031)
-  + [bpf, riscv: Use compressed instructions in the rv64 JIT](https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git/commit/?id=18a4d8c97b841632920c16a6fa9216d1214f3db7)
+  + [bpf, riscv: Modify JIT ctx to support compressed instructions](https://git.kernel.org/linus/bfabff3cb0fef366086c64f24be8ab316a355b99)
+  + [bpf, riscv: Add encodings for compressed instructions](https://git.kernel.org/linus/804ec72c68c8477b8713a1e8f8eda120d3471031)
+  + [bpf, riscv: Use compressed instructions in the rv64 JIT](https://git.kernel.org/linus/18a4d8c97b841632920c16a6fa9216d1214f3db7)
 
 ## How to install dependencies
 
