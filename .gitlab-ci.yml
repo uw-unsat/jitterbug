@@ -11,4 +11,4 @@ before_script:
 
 verify-all:
   script:
-    - raco test --jobs 8 racket/test
+    - make -C bpf verify-all
