@@ -11,4 +11,4 @@ before_script:
 
 verify-all:
   script:
-    - make -C bpf verify-all
+    - make verify-all
