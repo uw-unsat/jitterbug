@@ -4,19 +4,16 @@
 RACO_JOBS ?= 8
 RACO_TEST = raco test --jobs $(RACO_JOBS)
 
-TOPLEVEL := ..
-
-SERVAL_DIR := $(TOPLEVEL)/serval/
-SERVAL_LLVM := racket $(SERVAL_DIR)/serval/bin/serval-llvm.rkt
-
-CFLAGS += -O2 -g -fno-discard-value-names
-CFLAGS += -fno-stack-protector -D_FORTIFY_SOURCE=0
+SERVAL_PREFIX := $(shell racket -e '(begin (require pkg/lib) (display (path->string (pkg-directory "serval"))))')/
+SERVAL_LLVM := racket $(SERVAL_PREFIX)serval/bin/serval-llvm.rkt
 
 VERIFY_DEPS := \
 	racket/test/rv64/jit.ll.rkt \
 	racket/test/rv64/jit.map.rkt \
 	racket/test/rv64/jit.globals.rkt \
 
+CFLAGS += -O2 -g -fno-discard-value-names
+CFLAGS += -fno-stack-protector -D_FORTIFY_SOURCE=0
 CONFIG_DRAM_START := 0x80000000
 LDFLAGS :=
 
@@ -29,8 +26,6 @@ RISCV_TOOLPREFIX      := $(shell \
         else \
         echo "error: cannot find gcc for $(ARCH)" 1>&2; exit 1; fi)
 #endif
-
-NM := nm
 
 verify-all: $(VERIFY_DEPS)
 	$(RACO_TEST) -- racket/test
@@ -88,11 +83,9 @@ arch/riscv/net/bpf_jit_comp32.c: racket/rv32/bpf_jit_comp32.c
 
 racket/stacklang/jit: racket/stacklang/jit.o racket/stacklang/main.o
 
-phony_explicit:
-
 LINUX_CFLAGS :=  \
 	-nostdinc \
-	-isystem $(shell llvm-config --prefix)/lib/clang/10.0.0/include \
+	-isystem $(shell $(LLVM_CONFIG) --prefix)/lib/clang/10.0.0/include \
 	-Iarch/riscv/include \
 	-Iarch/riscv/include/generated \
 	-Iinclude \
@@ -127,5 +120,7 @@ LINUX_CFLAGS_EXTRA = $(LINUX_CFLAGS) -fno-PIE -ffunction-sections -fdata-section
 
 %.ll: %.c arch/riscv/net/bpf_jit.h
 	$(QUIET_CC)$(LLVM_CC) $(LINUX_CFLAGS_EXTRA) -S -emit-llvm $< -o $@
+
+phony_explicit:
 
 .PHONY: verify-all gen gen-llvm phony_explicit
