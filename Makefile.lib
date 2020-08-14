@@ -1,0 +1,31 @@
+
+MAKEFLAGS += --no-builtin-rules
+
+LLVM_CONFIG     := llvm-config
+ifeq ($(shell which $(LLVM_CONFIG) 2> /dev/null),)
+LLVM_CONFIG     := /usr/local/opt/llvm/bin/llvm-config
+endif
+ifeq ($(shell which $(LLVM_CONFIG) 2> /dev/null),)
+LLVM_PREFIX     :=
+else
+LLVM_PREFIX     := "$(shell $(LLVM_CONFIG) --bindir)/"
+endif
+
+LLVM_CC           := $(LLVM_PREFIX)clang
+LLVM_CLANG_FORMAT := $(LLVM_PREFIX)clang-format
+LLVM_LINK         := $(LLVM_PREFIX)llvm-link
+LLVM_LD           := $(LLVM_PREFIX)ld.lld
+LLVM_OBJDUMP      := $(LLVM_PREFIX)llvm-objdump
+LLVM_OPT          := $(LLVM_PREFIX)opt
+
+HOST_CC         := gcc
+
+V               = @
+Q               = $(V:1=)
+QUIET_CC        = $(Q:@=@echo    '     CC       '$@;)
+QUIET_CXX       = $(Q:@=@echo    '     CXX      '$@;)
+QUIET_IRPY      = $(Q:@=@echo    '     IRPY     '$@;)
+QUIET_AR        = $(Q:@=@echo    '     AR       '$@;)
+QUIET_LD        = $(Q:@=@echo    '     LD       '$@;)
+QUIET_GEN       = $(Q:@=@echo    '     GEN      '$@;)
+QUIET_CPP       = $(Q:@=@echo    '     CPP      '$@;)
