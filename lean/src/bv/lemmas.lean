@@ -162,7 +162,7 @@ lemma to_int_mod_eq (v : bv n) :
 begin
   simp [to_int],
   cases decidable.em ((v : ℕ) < 2^(n - 1)) with h h; simp [h, int.sub_mod_self];
-  norm_cast; rw ← int.coe_nat_mod; simp; congr
+  norm_cast; simp; congr
 end
 
 lemma of_to_int (v : bv n) :
