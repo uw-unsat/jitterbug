@@ -36,7 +36,7 @@ to be proved separately in SMT:
 namespace machine
 section machine
 
-  parameters {EVENT NONDET RESULT PC STATE INSN : Type}
+  parameters {EVENT NONDET INPUT RESULT PC STATE INSN : Type}
 
   -- A trace is a list of externally visible events.
   def TRACE : Type := list EVENT
@@ -187,7 +187,7 @@ end machine
 -- Re-declare infix notation outside of machine scope.
 local infix ` <+ ` := machine.subset
 
-constants EVENT NONDET RESULT : Type
+constants EVENT NONDET INPUT RESULT : Type
 
 def TRACE : Type := @machine.TRACE EVENT
 
@@ -207,7 +207,7 @@ namespace source
   definition star := machine.star pc_of step_insn result_of
 
   -- Initial state of a source program.
-  constant init_state : STATE
+  constant init_state : INPUT → STATE
 
   -- A safe state can always fetch an instruction from any reachable state.
   def safe (oracle : NONDET) (code : CODE) (s1 : STATE) : Prop :=
@@ -223,20 +223,20 @@ namespace source
   --
   -- This is assumed to hold.
   axiom wf_terminates :
-    ∀ (oracle : NONDET) (code : CODE),
+    ∀ (oracle : NONDET) (i : INPUT) (code : CODE),
       wf code →
       ∃ (s' : STATE) (tr : TRACE) (res : RESULT),
-        star oracle code init_state s' tr ∧
+        star oracle code (init_state i) s' tr ∧
         result_of s' = some res
 
   -- A well-formed program is safe from the initial state.
   --
   -- This is assumed to hold.
   axiom wf_safe :
-    ∀ (code : CODE),
+    ∀ (code : CODE) (i : INPUT),
       wf code →
       ∀ (oracle : NONDET),
-        safe oracle code init_state
+        safe oracle code (init_state i)
 
   -- A safe state can always take a step.
   lemma safe_self :
@@ -302,7 +302,7 @@ namespace jit
 
   -- The initial state to run target from. Unlike src, this
   -- can depend on the JIT mapping context.
-  constant init_target_state : CONTEXT → target.STATE
+  constant init_target_state : CONTEXT → INPUT → target.STATE
 
   -- If the JIT suceeds for an entire source program,
   -- it must have succeeded for each (valid) source instruction,
@@ -333,10 +333,10 @@ notation s1 `~[`:50 ctx `]` s2:50 := related ctx s1 s2
 --
 -- This is proved in SMT.
 axiom prologue_correct :
-  ∀ (oracle : NONDET) (ctx : jit.CONTEXT),
+  ∀ (oracle : NONDET) (ctx : jit.CONTEXT) (i : INPUT),
     ∃ (t2 : target.STATE),
-      target.star oracle (jit.emit_prologue ctx) (jit.init_target_state ctx) t2 [] ∧
-      source.init_state ~[ctx] t2
+      target.star oracle (jit.emit_prologue ctx) (jit.init_target_state ctx i) t2 [] ∧
+      (source.init_state i) ~[ctx] t2
 
 -- If the source state has reached a result, then executing
 -- the epilogue in a related target state reaches a state
@@ -429,21 +429,21 @@ end
 
 -- The behavior of the source program is implemented by the jited target code.
 theorem forward_simulation :
-  ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S' : source.STATE) (tr : TRACE) (res : RESULT),
+  ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S' : source.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
     source.wf code_S →
-    source.star oracle code_S source.init_state σ_S' tr →
+    source.star oracle code_S (source.init_state i) σ_S' tr →
     source.result_of σ_S' = some res →
     ∀ (ctx : jit.CONTEXT) (code_T : target.CODE),
       jit.emit ctx code_S = some code_T →
       ∃ (σ_T' : target.STATE),
-        target.star oracle code_T (jit.init_target_state ctx) σ_T' tr ∧
+        target.star oracle code_T (jit.init_target_state ctx i) σ_T' tr ∧
         target.result_of σ_T' = some res :=
 begin
-  intros _ _ _ _ _ H1 H2 H3 _ _ H4,
+  intros _ _ _ _ _ _ H1 H2 H3 _ _ H4,
 
   -- Construct the prologue star
-  have hprologue : ∃ t2, target.star oracle (jit.emit_prologue ctx) (jit.init_target_state ctx) t2 [] ∧
-                         source.init_state ~[ctx] t2,
+  have hprologue : ∃ t2, target.star oracle (jit.emit_prologue ctx) (jit.init_target_state ctx i) t2 [] ∧
+                         (source.init_state i) ~[ctx] t2,
   {
     apply prologue_correct,
   },
@@ -538,20 +538,20 @@ end
 
 lemma source_target_deterministic :
   ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S' : source.STATE) (tr : TRACE)
-    (res : RESULT),
+    (i : INPUT) (res : RESULT),
     source.wf code_S →
-    source.star oracle code_S source.init_state σ_S' tr →
+    source.star oracle code_S (source.init_state i) σ_S' tr →
     source.result_of σ_S' = some res →
     ∀ (ctx : jit.CONTEXT) (code_T : target.CODE) (σ_T' : target.STATE)
       (tr' : TRACE) (res' : RESULT),
       jit.emit ctx code_S = some code_T →
-      target.star oracle code_T (jit.init_target_state ctx) σ_T' tr' →
+      target.star oracle code_T (jit.init_target_state ctx i) σ_T' tr' →
       target.result_of σ_T' = some res' →
       (tr = tr' ∧ res = res') :=
 begin
-  intros _ _ _ _ _ WF h1 h2 _ _ _ _ _ h3 h4 h5,
+  intros _ _ _ _ _ _ WF h1 h2 _ _ _ _ _ h3 h4 h5,
   let x := forward_simulation,
-  specialize x oracle code_S σ_S' tr res (by assumption)
+  specialize x oracle code_S σ_S' tr i res (by assumption)
     (by assumption) (by assumption) ctx code_T (by assumption),
   cases x with T H,
   cases H,
@@ -562,18 +562,18 @@ end
 -- The behavior of the jited target code is allowed by the source program.
 theorem backward_simulation :
   ∀ (ctx : jit.CONTEXT) (code_S : source.CODE) (code_T : target.CODE)
-    (oracle : NONDET) (σ_T' : target.STATE) (tr : TRACE) (res : RESULT),
+    (oracle : NONDET) (σ_T' : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
     source.wf code_S →
     jit.emit ctx code_S = some code_T →
-    target.star oracle code_T (jit.init_target_state ctx) σ_T' tr →
+    target.star oracle code_T (jit.init_target_state ctx i) σ_T' tr →
     target.result_of σ_T' = some res →
     ∃ (σ_S' : source.STATE),
-      source.star oracle code_S source.init_state σ_S' tr ∧
+      source.star oracle code_S (source.init_state i) σ_S' tr ∧
       source.result_of σ_S' = some res :=
 begin
   intros,
   let x := source.wf_terminates,
-  specialize x oracle code_S (by assumption),
+  specialize x oracle i code_S (by assumption),
   cases x with s' x,
   cases x with tr' x,
   cases x with res' H,
@@ -581,4 +581,30 @@ begin
   cases H,
   suffices : tr' = tr ∧ res' = res, by cc,
   apply source_target_deterministic; assumption,
+end
+
+theorem bisimulation :
+  ∀ (ctx : jit.CONTEXT) (code_S : source.CODE) (code_T : target.CODE)
+    (oracle : NONDET) (σ_T' : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
+    source.wf code_S →
+    jit.emit ctx code_S = some code_T →
+
+    ((∃ (σ_T' : target.STATE),
+      target.star oracle code_T (jit.init_target_state ctx i) σ_T' tr ∧
+      target.result_of σ_T' = some res)
+    ↔
+    (∃ (σ_S' : source.STATE),
+      source.star oracle code_S (source.init_state i) σ_S' tr ∧
+      source.result_of σ_S' = some res)) :=
+begin
+  intros,
+  split; intros,
+  { cases a_2,
+    cases a_2_h,
+    apply backward_simulation; assumption,
+  },
+  { cases a_2,
+    cases a_2_h,
+    apply forward_simulation; assumption,
+  },
 end
