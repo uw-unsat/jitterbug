@@ -9,6 +9,38 @@ before_script:
   - export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib64"
   - raco pkg install ./serval
 
-verify-all:
+verify-stacklang:
   script:
-    - make verify-all
+    - make verify-stacklang
+
+verify-bpf-jit-arm32:
+  script:
+    - make verify-arm32
+
+verify-bpf-jit-arm64:
+  script:
+    - make verify-arm64
+
+verify-bpf-jit-rv32:
+  script:
+    - make verify-rv32
+
+generate-rv32-jit:
+  script:
+    - make -B gen
+
+verify-bpf-jit-rv64:
+  script:
+    - make verify-rv64
+
+verify-bpf-jit-rvenc:
+  script:
+    - make verify-rvenc
+
+verify-bpf-jit-x86_32:
+  script:
+    - make verify-x86_32
+
+verify-bpf-jit-x86_64:
+  script:
+    - make verify-x86_64
