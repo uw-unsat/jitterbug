@@ -1,6 +1,10 @@
-# Linux eBPF JIT verification
+# Jitterbug
 
-This repository contains a tool for formally verifying the Linux
+This repository contains the tool described in our upcoming
+[OSDI'20](https://www.usenix.org/conference/osdi20) paper
+"Specification, implementation, and verification of just-in-time compilers for an in-kernel virtual machine".
+
+This is a tool for formally verifying the Linux
 kernel BPF JITs that builds on our verification framework [Serval].
 We have used this tool to aid the development in the following ways:
 
