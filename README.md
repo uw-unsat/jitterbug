@@ -48,7 +48,7 @@ We have used this tool to aid the development in the following ways:
 
 ## How to install dependencies
 
-- Download and install [Racket] (tested on v7.7 and v7.7-cs).
+- Download and install [Racket] (tested on v7.8-cs).
 
 - Uninstall any previous versions of Serval:
 
