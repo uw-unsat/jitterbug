@@ -1,5 +1,5 @@
 [package]
-name = "absynthe"
+name = "jitterbug"
 version = "0.1"
 lean_version = "leanprover-community/lean:3.18.4"
 path = "src"

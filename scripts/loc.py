@@ -165,7 +165,7 @@ do_loc("x86 interpreter", "Racket", ["serval/serval/x86/", "serval/serval/x86.rk
 # Lib
 
 do_loc(
-    "Absynthe library",
+    "Jitterbug library",
     "Racket",
     [
         "racket/lib/bvaxiom.rkt",
