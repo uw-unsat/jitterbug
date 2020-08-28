@@ -70,6 +70,7 @@ raco pkg install --auto ./serval
 ```
 
 You may also wish to install the [Boolector] SMT solver.
+We tested using Boolector v3.2.1 configured to use the CaDiCal SAT solver.
 The verification and synthesis will attempt to use it first, before
 falling back to Z3, which may take significantly longer
 (e.g., more than 10x slower for synthesis).
