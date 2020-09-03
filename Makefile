@@ -85,7 +85,7 @@ racket/stacklang/jit: racket/stacklang/jit.o racket/stacklang/main.o
 
 LINUX_CFLAGS :=  \
 	-nostdinc \
-	-isystem $(shell $(LLVM_CONFIG) --prefix)/lib/clang/10.0.0/include \
+	-isystem $(shell $(LLVM_CONFIG) --prefix)/lib/clang/$(shell $(LLVM_CONFIG) --version)/include \
 	-Iarch/riscv/include \
 	-Iarch/riscv/include/generated \
 	-Iinclude \
