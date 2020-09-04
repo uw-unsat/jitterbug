@@ -33,8 +33,8 @@ time_re = re.compile(r"\[       OK \] \"VERIFY \((.+)\)\" \((.+) ms\)")
 
 
 def get_proc_one_architecture(arch):
-    cmd = "echo" if dry_run else "raco"
-    args = ["test", "--jobs", "1", "--", f"racket/test/{arch}"]
+    cmd = "echo" if dry_run else "make"
+    args = ["VERIFY_JOBS=1", f"verify-{arch}"]
     return subprocess.run([cmd, *args], capture_output=True, encoding="utf8", check=True)
 
 
