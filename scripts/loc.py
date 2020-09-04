@@ -30,15 +30,17 @@ def tokei(paths, *, exclude=[]):
     return json.loads(proc.stdout)
 
 
-print("component,lines")
+# print("component,lines")
 
+data = {}
 
 def do_loc(component, language, paths, *, exclude=[]):
     results = tokei(paths, exclude=exclude)
     n = results[language]["code"]
     if language == 'C':
         n += results.get('CHeader', {'code': 0})['code']
-    print(f'{component},{n}')
+    data[component] = n
+    # print(f'{component},{n}')
 
 
 # riscv
@@ -190,3 +192,56 @@ do_loc(
     "Racket",
     ["serval/serval/bpf.rkt"],
 )
+
+print('### Generic components')
+print('Jitterbug library = {:,} loc'.format(data['Jitterbug library']))
+print('BPF interpreter = {:,} loc'.format(data['Racket BPF interpreter']))
+
+print('\n### Code size table')
+print('\\begin{tabular}{lrrrr}')
+print('\\toprule')
+print('JIT impl. (C) & JIT impl. (DSL) & Spec. & Interp. \\\\')
+print('\\midrule')
+
+print('riscv32 & {:,} & {:,} & {:,} & {:,} \\\\'.format(
+    data['rv32 C implementation'],
+    data['rv32 Racket impl'],
+    data['rv32 Racket invariants'],
+    data['riscv interpreter'],
+))
+
+print('riscv64 & {:,} & {:,} & {:,} & \" \\\\'.format(
+    data['rv64 C implementation'],
+    data['rv64 Racket impl'],
+    data['rv64 Racket invariants'],
+))
+
+print('arm32 & {:,} & {:,} & {:,} & {:,} \\\\'.format(
+    data['arm32 C implementation'],
+    data['arm32 Racket impl'],
+    data['arm32 Racket invariants'],
+    data['arm32 interpreter'],
+))
+
+print('arm64 & {:,} & {:,} & {:,} & {:,} \\\\'.format(
+    data['arm64 C implementation'],
+    data['arm64 Racket impl'],
+    data['arm64 Racket invariants'],
+    data['arm64 interpreter'],
+))
+
+print('x86-32 & {:,} & {:,} & {:,} & {:,} \\\\'.format(
+    data['x86_32 C implementation'],
+    data['x86_32 Racket impl'],
+    data['x86_32 Racket invariants'],
+    data['x86 interpreter'],
+))
+
+print('x86-64 & {:,} & {:,} & {:,} & " \\\\'.format(
+    data['x86_64 C implementation'],
+    data['x86_64 Racket impl'],
+    data['x86_64 Racket invariants'],
+))
+
+print('\\bottomrule')
+print('\\end{tabular}')

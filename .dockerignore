@@ -1,0 +1,6 @@
+**/.git
+**/.github
+**/.gitlab-ci.yml
+**/.gitignore
+**/.gitmodules
+**/.dockerignore
