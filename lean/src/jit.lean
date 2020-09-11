@@ -228,6 +228,7 @@ namespace source
         star oracle code (init_state i) s' tr ∧
         result_of s' = some res
 
+  -- A final state is always safe.
   lemma final_safe :
     ∀ oracle code s1 res,
       result_of s1 = some res →
@@ -274,6 +275,7 @@ namespace source
     constructor; assumption,
   end
 
+  -- Safety is preserved across an arbitrary number of steps.
   lemma safe_star :
     ∀ (oracle : NONDET) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
       safe oracle code s₁ →
@@ -286,6 +288,8 @@ namespace source
     apply safe_step; assumption,
   end
 
+  -- If a state is safe, and it was obtained by taking a step,
+  -- then the state it stepped from is also safe.
   lemma safe_step_backwards :
     ∀ (oracle : NONDET) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
       safe oracle code s₂ →
@@ -313,6 +317,7 @@ namespace source
     apply machine.star.refl,
   end
 
+  -- A state that eventually terminates is always safe.
   lemma terminates_safe :
     ∀ oracle code s1 s2 tr res,
       star oracle code s1 s2 tr →
@@ -326,6 +331,7 @@ namespace source
     apply a_ih, assumption,
   end
 
+  -- Well-formed code from the initial state is safe.
   lemma wf_safe :
     ∀ (code : CODE) (i : INPUT),
       wf code →
@@ -460,6 +466,8 @@ begin
     existsi σ_T, split, constructor, assumption, },
   intros _ _ _ related emitted,
 
+  -- Handle the case where s1 is a final state. If it is, it steps to itself and
+  -- the target state can take zero steps.
   cases hresult : (source.result_of s1),
   tactic.swap,
   { dsimp [machine.step] at *,
