@@ -1,8 +1,8 @@
 [package]
 name = "jitterbug"
 version = "0.1"
-lean_version = "leanprover-community/lean:3.18.4"
+lean_version = "leanprover-community/lean:3.20.0"
 path = "src"
 
 [dependencies]
-mathlib = {git = "https://github.com/leanprover-community/mathlib", rev = "lean-3.18.4"}
+mathlib = {git = "https://github.com/leanprover-community/mathlib", rev = "lean-3.20.0"}
