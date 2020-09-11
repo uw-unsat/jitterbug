@@ -7,11 +7,9 @@ This file contains the metatheory of JIT correctness.
 The main theorems are forward_simulation and backward_simulation, proved based
 on the following two sets of axioms.
 
-Three axioms are assumed to be correct (e.g., ensured by the Linux kernel):
+Two axioms are assumed to be correct (e.g., ensured by the Linux kernel):
 
 * wf_terminates: a program that passes the checker terminates.
-
-* wf_safe: a program that passes the checker is safe.
 
 * emit_correct: the output of the JIT contains the output of individual parts.
 
@@ -209,11 +207,12 @@ namespace source
   -- Initial state of a source program.
   constant init_state : INPUT → STATE
 
-  -- A safe state can always fetch an instruction from any reachable state.
+  -- A safe state can always fetch an instruction from any reachable state,
+  -- or it's the final state
   def safe (oracle : NONDET) (code : CODE) (s1 : STATE) : Prop :=
     ∀ s2 tr,
       star oracle code s1 s2 tr →
-      ∃ insn, code (pc_of s2) = some insn
+      (∃ insn, code (pc_of s2) = some insn) ∨ (∃ res, result_of s2 = some res)
 
   -- This captures the guarantees of the checker: a well-formed program passes
   -- the checker.
@@ -229,25 +228,35 @@ namespace source
         star oracle code (init_state i) s' tr ∧
         result_of s' = some res
 
-  -- A well-formed program is safe from the initial state.
-  --
-  -- This is assumed to hold.
-  axiom wf_safe :
-    ∀ (code : CODE) (i : INPUT),
-      wf code →
-      ∀ (oracle : NONDET),
-        safe oracle code (init_state i)
+  lemma final_safe :
+    ∀ oracle code s1 res,
+      result_of s1 = some res →
+      safe oracle code s1 :=
+  begin
+    dsimp [safe], intros, right,
+    induction a_1,
+    existsi res, assumption,
+    apply a_1_ih,
+    dsimp [machine.step] at *,
+    rw a at *,
+    cases a_1_a_1,
+    assumption,
+  end
 
-  -- A safe state can always take a step.
+  -- A safe state can always take a step if it's not final.
   lemma safe_self :
     ∀ (oracle : NONDET) (code : CODE) (s : STATE),
       safe oracle code s →
+      result_of s = none →
       ∃ (insn : INSN),
         code (pc_of s) = some insn :=
   begin
-    intros _ _ _ H1,
-    unfold safe at *,
-    apply H1, constructor,
+    intros,
+    dsimp [safe] at *,
+    specialize a s [] (by constructor),
+    cases a, assumption,
+    cases a, rw a_h at *,
+    contradiction,
   end
 
   -- A safe state is still safe after one step.
@@ -263,6 +272,72 @@ namespace source
     specialize H1 _ (tr ++ tr_1),
     apply H1,
     constructor; assumption,
+  end
+
+  lemma safe_star :
+    ∀ (oracle : NONDET) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
+      safe oracle code s₁ →
+      star oracle code s₁ s₂ tr →
+      safe oracle code s₂ :=
+  begin
+    intros,
+    induction a_1, by assumption,
+    apply a_1_ih,
+    apply safe_step; assumption,
+  end
+
+  lemma safe_step_backwards :
+    ∀ (oracle : NONDET) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
+      safe oracle code s₂ →
+      step oracle code s₁ = some (s₂, tr) →
+      safe oracle code s₁ :=
+  begin
+    intros,
+    dsimp [safe], intros,
+    revert s₂,
+    induction a_2; intros,
+    dsimp [step, machine.step] at *,
+    cases h4 : (result_of a_2); rw h4 at *; dsimp [machine.step._match_1] at *,
+    cases h5 : (code (pc_of a_2)); rw h5 at *,
+    contradiction,
+    left,
+    existsi val, reflexivity,
+    cases a_1,
+    right, existsi val, reflexivity,
+    dsimp [step] at a_1,
+    rw a_1 at *,
+    cases a_2_a_1,
+    let x := safe_star oracle code _ _ _ a a_2_a_2,
+    dsimp [safe] at x,
+    apply x,
+    apply machine.star.refl,
+  end
+
+  lemma terminates_safe :
+    ∀ oracle code s1 s2 tr res,
+      star oracle code s1 s2 tr →
+      result_of s2 = some res →
+      safe oracle code s1 :=
+  begin
+    intros,
+    induction a,
+    apply final_safe; assumption,
+    apply safe_step_backwards; try{assumption},
+    apply a_ih, assumption,
+  end
+
+  lemma wf_safe :
+    ∀ (code : CODE) (i : INPUT),
+      wf code →
+      ∀ (oracle : NONDET),
+        safe oracle code (init_state i) :=
+  begin
+    intros,
+    cases (wf_terminates oracle i code (by assumption)),
+    cases h,
+    cases h_h,
+    cases h_h_h,
+    apply terminates_safe; try{assumption},
   end
 
 end source
@@ -384,6 +459,15 @@ begin
   { intros _ _ _ related emitted,
     existsi σ_T, split, constructor, assumption, },
   intros _ _ _ related emitted,
+
+  cases hresult : (source.result_of s1),
+  tactic.swap,
+  { dsimp [machine.step] at *,
+    rw hresult at *,
+    cases step_S,
+    cases step_S,
+    apply IH; assumption,
+  },
 
   have hinsn : ∃ insn, code_S (source.pc_of s1) = some insn,
   {
