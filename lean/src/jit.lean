@@ -444,6 +444,7 @@ axiom per_insn_correct :
   ∀ (oracle : NONDET) (ctx : jit.CONTEXT) (i : source.PC) (code_S : source.CODE)
     (f_T : target.CODE) (σ_S σ_S' : source.STATE) (σ_T : target.STATE)
     (tr : TRACE) (code_T : target.CODE),
+      source.wf ctx code_S →
       jit.emit_insn ctx code_S i = some f_T →
       σ_S ~[ctx] σ_T →
       source.pc_of σ_S = i →
