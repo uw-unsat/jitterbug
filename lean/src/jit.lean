@@ -195,7 +195,7 @@ noncomputable instance : has_append TRACE := ⟨list.append⟩
 
 namespace source
 
-  constants INSN PC STATE : Type
+  constants INSN PC STATE CONTEXT : Type
   constant pc_of : STATE → PC
   constant step_insn : NONDET → INSN → STATE → (STATE × TRACE)
   constant result_of : STATE → option RESULT
@@ -216,14 +216,14 @@ namespace source
 
   -- This captures the guarantees of the checker: a well-formed program passes
   -- the checker.
-  constant wf : CODE → Prop
+  constant wf : CONTEXT → CODE → Prop
 
   -- A well-formed program terminates.
   --
   -- This is assumed to hold.
   axiom wf_terminates :
-    ∀ (oracle : NONDET) (i : INPUT) (code : CODE),
-      wf code →
+    ∀ (ctx : CONTEXT) (oracle : NONDET) (i : INPUT) (code : CODE),
+      wf ctx code →
       ∃ (s' : STATE) (tr : TRACE) (res : RESULT),
         star oracle code (init_state i) s' tr ∧
         result_of s' = some res
@@ -333,13 +333,13 @@ namespace source
 
   -- Well-formed code from the initial state is safe.
   lemma wf_safe :
-    ∀ (code : CODE) (i : INPUT),
-      wf code →
+    ∀ (ctx : CONTEXT) (code : CODE) (i : INPUT),
+      wf ctx code →
       ∀ (oracle : NONDET),
         safe oracle code (init_state i) :=
   begin
     intros,
-    cases (wf_terminates oracle i code (by assumption)),
+    cases (wf_terminates ctx oracle i code (by assumption)),
     cases h,
     cases h_h,
     cases h_h_h,
@@ -367,8 +367,8 @@ end target
 
 namespace jit
 
-  -- This represents the JIT state.
-  constant CONTEXT : Type
+  -- alias for source.CONTEXT
+  noncomputable def CONTEXT : Type := source.CONTEXT
 
   -- Emit target code for a single source instruction.
   constant emit_insn : CONTEXT → source.CODE → source.PC → option target.CODE
@@ -392,7 +392,7 @@ namespace jit
   -- This is assumed to hold.
   axiom emit_correct :
     ∀ (ctx : jit.CONTEXT) (code_S : source.CODE) (code_T : target.CODE),
-      source.wf code_S →
+      source.wf ctx code_S →
       jit.emit ctx code_S = some code_T →
       (∀ (i : source.PC) (insn : source.INSN),
         code_S i = some insn →
@@ -450,21 +450,21 @@ axiom per_insn_correct :
         target.star oracle f_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T'
 
 lemma star_src_correct :
-  ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE),
-    source.wf code_S →
+  ∀ (ctx : jit.CONTEXT) (oracle : NONDET) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE),
+    source.wf ctx code_S →
     source.safe oracle code_S σ_S →
     source.star oracle code_S σ_S σ_S' tr →
-    ∀ (ctx : jit.CONTEXT) (σ_T : target.STATE) (code_T : target.CODE),
+    ∀ (σ_T : target.STATE) (code_T : target.CODE),
       σ_S ~[ctx] σ_T →
       jit.emit ctx code_S = some code_T →
       ∃ (σ_T' : target.STATE),
         target.star oracle code_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T' :=
 begin
-  intros _ _ _ _ _ wf_S safe_S star_S,
+  intros _ _ _ _ _ _ wf_S safe_S star_S,
   induction star_S with s1 s1 s2 s3 tr1 tr2 step_S star_S' IH,
-  { intros _ _ _ related emitted,
+  { intros _ _ related emitted,
     existsi σ_T, split, constructor, assumption, },
-  intros _ _ _ related emitted,
+  intros _ _ related emitted,
 
   -- Handle the case where s1 is a final state. If it is, it steps to itself and
   -- the target state can take zero steps.
@@ -521,17 +521,17 @@ end
 
 -- The behavior of the source program is implemented by the jited target code.
 theorem forward_simulation :
-  ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S' : source.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
-    source.wf code_S →
+  ∀ (ctx : jit.CONTEXT) (oracle : NONDET) (code_S : source.CODE) (σ_S' : source.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
+    source.wf ctx code_S →
     source.star oracle code_S (source.init_state i) σ_S' tr →
     source.result_of σ_S' = some res →
-    ∀ (ctx : jit.CONTEXT) (code_T : target.CODE),
+    ∀ (code_T : target.CODE),
       jit.emit ctx code_S = some code_T →
       ∃ (σ_T' : target.STATE),
         target.star oracle code_T (jit.init_target_state ctx i) σ_T' tr ∧
         target.result_of σ_T' = some res :=
 begin
-  intros _ _ _ _ _ _ H1 H2 H3 _ _ H4,
+  intros _ _ _ _ _ _ _ H1 H2 H3 _ H4,
 
   -- Construct the prologue star
   have hprologue : ∃ t2, target.star oracle (jit.emit_prologue ctx) (jit.init_target_state ctx i) t2 [] ∧
@@ -629,22 +629,22 @@ begin
 end
 
 lemma source_target_deterministic :
-  ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S' : source.STATE) (tr : TRACE)
+  ∀ (ctx : jit.CONTEXT) (oracle : NONDET) (code_S : source.CODE) (σ_S' : source.STATE) (tr : TRACE)
     (i : INPUT) (res : RESULT),
-    source.wf code_S →
+    source.wf ctx code_S →
     source.star oracle code_S (source.init_state i) σ_S' tr →
     source.result_of σ_S' = some res →
-    ∀ (ctx : jit.CONTEXT) (code_T : target.CODE) (σ_T' : target.STATE)
+    ∀ (code_T : target.CODE) (σ_T' : target.STATE)
       (tr' : TRACE) (res' : RESULT),
       jit.emit ctx code_S = some code_T →
       target.star oracle code_T (jit.init_target_state ctx i) σ_T' tr' →
       target.result_of σ_T' = some res' →
       (tr = tr' ∧ res = res') :=
 begin
-  intros _ _ _ _ _ _ WF h1 h2 _ _ _ _ _ h3 h4 h5,
+  intros _ _ _ _ _ _ _ WF h1 h2 _ _ _ _ h3 h4 h5,
   let x := forward_simulation,
-  specialize x oracle code_S σ_S' tr i res (by assumption)
-    (by assumption) (by assumption) ctx code_T (by assumption),
+  specialize x ctx oracle code_S σ_S' tr i res (by assumption)
+    (by assumption) (by assumption) code_T (by assumption),
   cases x with T H,
   cases H,
   suffices : tr = tr' ∧ T = σ_T', by { split; cc },
@@ -655,7 +655,7 @@ end
 theorem backward_simulation :
   ∀ (ctx : jit.CONTEXT) (code_S : source.CODE) (code_T : target.CODE)
     (oracle : NONDET) (σ_T' : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
-    source.wf code_S →
+    source.wf ctx code_S →
     jit.emit ctx code_S = some code_T →
     target.star oracle code_T (jit.init_target_state ctx i) σ_T' tr →
     target.result_of σ_T' = some res →
@@ -665,7 +665,7 @@ theorem backward_simulation :
 begin
   intros,
   let x := source.wf_terminates,
-  specialize x oracle i code_S (by assumption),
+  specialize x ctx oracle i code_S (by assumption),
   cases x with s' x,
   cases x with tr' x,
   cases x with res' H,
@@ -678,7 +678,7 @@ end
 theorem bisimulation :
   ∀ (ctx : jit.CONTEXT) (code_S : source.CODE) (code_T : target.CODE)
     (oracle : NONDET) (σ_T' : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
-    source.wf code_S →
+    source.wf ctx code_S →
     jit.emit ctx code_S = some code_T →
 
     ((∃ (σ_T' : target.STATE),
