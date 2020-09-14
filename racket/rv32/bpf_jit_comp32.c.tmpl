@@ -115,10 +115,10 @@ static void emit_imm(const s8 rd, s32 imm, struct rv_jit_context *ctx)
 	u32 lower = imm & 0xfff;
 
 	if (upper) {
-		emit_lui(rd, upper, ctx);
-		emit_addi(rd, rd, lower, ctx);
+		emit(rv_lui(rd, upper), ctx);
+		emit(rv_addi(rd, rd, lower), ctx);
 	} else {
-		emit_li(rd, lower, ctx);
+		emit(rv_addi(rd, RV_REG_ZERO, lower), ctx);
 	}
 }
 
@@ -418,7 +418,7 @@ static int emit_store_r64(const s8 *dst, const s8 *src, s16 off,
 		return -1;
 
 	emit_imm(RV_REG_T0, off, ctx);
-	emit_add(RV_REG_T0, RV_REG_T0, lo(rd), ctx);
+	emit(rv_add(RV_REG_T0, RV_REG_T0, lo(rd)), ctx);
 
 // clang-format on
 @|SWITCH_emit_store_r64|
@@ -447,7 +447,7 @@ static void emit_zext64(const s8 *dst, struct rv_jit_context *ctx)
 	const s8 *tmp1 = bpf2rv32[TMP_REG_1];
 
 	rd = bpf_get_reg64(dst, tmp1, ctx);
-	emit_li(hi(rd), 0, ctx);
+	emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
 	bpf_put_reg64(dst, rd, ctx);
 }
 
@@ -575,12 +575,12 @@ int bpf_jit_emit_insn(const struct bpf_insn *insn, struct rv_jit_context *ctx,
 
 		switch (imm) {
 		case 16:
-			emit_slli(lo(rd), lo(rd), 16, ctx);
-			emit_srli(lo(rd), lo(rd), 16, ctx);
+			emit(rv_slli(lo(rd), lo(rd), 16), ctx);
+			emit(rv_srli(lo(rd), lo(rd), 16), ctx);
 			/* Fallthrough. */
 		case 32:
 			if (!ctx->prog->aux->verifier_zext)
-				emit_li(hi(rd), 0, ctx);
+				emit(rv_addi(hi(rd), RV_REG_ZERO, 0), ctx);
 			break;
 		case 64:
 			/* Do nothing. */
