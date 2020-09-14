@@ -373,9 +373,9 @@ namespace jit
   -- Emit target code for a single source instruction.
   constant emit_insn : CONTEXT → source.CODE → source.PC → option target.CODE
 
-  constant emit_prologue : CONTEXT → target.CODE
+  constant emit_prologue : CONTEXT → source.CODE → target.CODE
 
-  constant emit_epilogue : CONTEXT → target.CODE
+  constant emit_epilogue : CONTEXT → source.CODE → target.CODE
 
   -- Emit target code for an entire source program, including
   -- epilogue and prologue.
@@ -398,8 +398,8 @@ namespace jit
         code_S i = some insn →
         ∃ (f_T : target.CODE),
           jit.emit_insn ctx code_S i = some f_T ∧ f_T <+ code_T) ∧
-      emit_prologue ctx <+ code_T ∧
-      emit_epilogue ctx <+ code_T
+      emit_prologue ctx code_S <+ code_T ∧
+      emit_epilogue ctx code_S <+ code_T
 
 end jit
 
@@ -414,9 +414,10 @@ notation s1 `~[`:50 ctx `]` s2:50 := related ctx s1 s2
 --
 -- This is proved in SMT.
 axiom prologue_correct :
-  ∀ (oracle : NONDET) (ctx : jit.CONTEXT) (i : INPUT),
+  ∀ (oracle : NONDET) (ctx : jit.CONTEXT) (i : INPUT) (code_S : source.CODE),
+    source.wf ctx code_S →
     ∃ (t2 : target.STATE),
-      target.star oracle (jit.emit_prologue ctx) (jit.init_target_state ctx i) t2 [] ∧
+      target.star oracle (jit.emit_prologue ctx code_S) (jit.init_target_state ctx i) t2 [] ∧
       (source.init_state i) ~[ctx] t2
 
 -- If the source state has reached a result, then executing
@@ -425,11 +426,12 @@ axiom prologue_correct :
 --
 -- This is proved in SMT.
 axiom epilogue_correct :
-  ∀ (oracle : NONDET) (ctx : jit.CONTEXT) (s1 : source.STATE) (t1 : target.STATE),
+  ∀ (oracle : NONDET) (ctx : jit.CONTEXT) (code_S : source.CODE) (s1 : source.STATE) (t1 : target.STATE),
+    source.wf ctx code_S →
     s1 ~[ctx] t1 →
     (∃ res, source.result_of s1 = some res) →
     ∃ (t2 : target.STATE),
-      target.star oracle (jit.emit_epilogue ctx) t1 t2 [] ∧
+      target.star oracle (jit.emit_epilogue ctx code_S) t1 t2 [] ∧
       source.result_of s1 = target.result_of t2
 
 -- If the JIT produces some code for one source instruction,
@@ -534,10 +536,11 @@ begin
   intros _ _ _ _ _ _ _ H1 H2 H3 _ H4,
 
   -- Construct the prologue star
-  have hprologue : ∃ t2, target.star oracle (jit.emit_prologue ctx) (jit.init_target_state ctx i) t2 [] ∧
+  have hprologue : ∃ t2, target.star oracle (jit.emit_prologue ctx code_S) (jit.init_target_state ctx i) t2 [] ∧
                          (source.init_state i) ~[ctx] t2,
   {
     apply prologue_correct,
+    by assumption
   },
   cases hprologue with t2 hprologue,
   cases hprologue,
@@ -552,9 +555,9 @@ begin
   cases hstar with hstar_left hstar_right,
 
   -- construct the epilogue star
-  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue ctx) t3 t4 [] ∧ source.result_of σ_S' = target.result_of t4,
+  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue ctx code_S) t3 t4 [] ∧ source.result_of σ_S' = target.result_of t4,
   {
-    apply epilogue_correct, from hstar_right,
+    apply epilogue_correct, by assumption, from hstar_right,
     existsi res, from H3,
   },
   cases hepilogue with t4 hepilogue,
@@ -580,8 +583,9 @@ begin
   change tr with (list.nil ++ tr),
   apply machine.star_trans,
   {
-    apply machine.star_subset, tactic.swap, from ec_prologue,
-    assumption,
+    apply machine.star_subset,
+    apply hprologue_left,
+    apply ec_prologue,
   },
 
   -- Run the middle
