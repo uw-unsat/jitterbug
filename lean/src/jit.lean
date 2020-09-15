@@ -435,14 +435,14 @@ axiom prologue_correct :
 --
 -- This is proved in SMT.
 axiom epilogue_correct :
-  ∀ (oracle : NONDET) (ctx : CONTEXT) (code_S : source.CODE) (s1 : source.STATE) (init_t t1 : target.STATE),
+  ∀ (oracle : NONDET) (ctx : CONTEXT) (code_S : source.CODE) (s1 : source.STATE) (init_t t1 : target.STATE) (res : RESULT),
     source.wf ctx code_S →
     s1 ~[ctx] t1 →
     target.arch_inv ctx init_t t1 →
-    (∃ res, source.result_of s1 = some res) →
+    source.result_of s1 = some res →
     ∃ (t2 : target.STATE),
       target.star oracle (jit.emit_epilogue ctx code_S) t1 t2 [] ∧
-      source.result_of s1 = target.result_of t2 ∧
+      target.result_of t2 = some res ∧
       target.arch_safe ctx init_t t2
 
 -- If the JIT produces some code for one source instruction,
@@ -571,11 +571,10 @@ begin
   cases hstar with hstar_left hstar_right,
 
   -- construct the epilogue star
-  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue ctx code_S) t3 t4 [] ∧ source.result_of σ_S' = target.result_of t4 ∧ target.arch_safe ctx σ_T t4,
+  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue ctx code_S) t3 t4 [] ∧ target.result_of t4 = some res ∧ target.arch_safe ctx σ_T t4,
   {
     cases hstar_right,
-    apply epilogue_correct, by assumption, by assumption, by assumption,
-    existsi res, from H3,
+    apply epilogue_correct; by assumption,
   },
   cases hepilogue with t4 hepilogue,
   cases hepilogue,
@@ -585,11 +584,7 @@ begin
   existsi t4,
   split, tactic.swap, split,
   cases hepilogue_right with hepilogue_right regs_same,
-  {
-    -- Handle the easy case first: prove the results match
-    rewrite ← hepilogue_right,
-    rewrite H3,
-  },
+  by assumption,
 
   cases hepilogue_right, by assumption,
 
