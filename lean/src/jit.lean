@@ -366,6 +366,13 @@ namespace target
   noncomputable def step := machine.step pc_of step_insn result_of
   def star := machine.star pc_of step_insn result_of
 
+  -- are the callee-saved registers in two states the same
+  constant callee_registers_same : CONTEXT → STATE → STATE → Prop
+
+  -- arch_inv(ctx, init, s) hold when architectural invariants hold for s
+  -- given the initial state "init".
+  constant arch_inv : CONTEXT → STATE → STATE → Prop
+
 end target
 
 -- This models the JIT implementation.
@@ -418,7 +425,8 @@ axiom prologue_correct :
     source.initial_state ctx i s1 →
     ∃ (t2 : target.STATE),
       target.star oracle (jit.emit_prologue ctx code_S) t1 t2 [] ∧
-      s1 ~[ctx] t2
+      s1 ~[ctx] t2 ∧
+      target.arch_inv ctx t1 t2
 
 -- If the source state has reached a result, then executing
 -- the epilogue in a related target state reaches a state
@@ -426,13 +434,15 @@ axiom prologue_correct :
 --
 -- This is proved in SMT.
 axiom epilogue_correct :
-  ∀ (oracle : NONDET) (ctx : CONTEXT) (code_S : source.CODE) (s1 : source.STATE) (t1 : target.STATE),
+  ∀ (oracle : NONDET) (ctx : CONTEXT) (code_S : source.CODE) (s1 : source.STATE) (init_t t1 : target.STATE),
     source.wf ctx code_S →
     s1 ~[ctx] t1 →
+    target.arch_inv ctx init_t t1 →
     (∃ res, source.result_of s1 = some res) →
     ∃ (t2 : target.STATE),
       target.star oracle (jit.emit_epilogue ctx code_S) t1 t2 [] ∧
-      source.result_of s1 = target.result_of t2
+      source.result_of s1 = target.result_of t2 ∧
+      target.callee_registers_same ctx init_t t2
 
 -- If the JIT produces some code for one source instruction,
 -- then starting from related source and target states,
@@ -442,32 +452,34 @@ axiom epilogue_correct :
 -- This is proved in SMT.
 axiom per_insn_correct :
   ∀ (oracle : NONDET) (ctx : CONTEXT) (i : source.PC) (code_S : source.CODE)
-    (f_T : target.CODE) (σ_S σ_S' : source.STATE) (σ_T : target.STATE)
+    (f_T : target.CODE) (σ_S σ_S' : source.STATE) (init_T σ_T : target.STATE)
     (tr : TRACE) (code_T : target.CODE),
       source.wf ctx code_S →
       jit.emit_insn ctx code_S i = some f_T →
       σ_S ~[ctx] σ_T →
+      target.arch_inv ctx init_T σ_T →
       source.pc_of σ_S = i →
       source.step oracle code_S σ_S = some (σ_S', tr) →
       ∃ (σ_T' : target.STATE),
-        target.star oracle f_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T'
+        target.star oracle f_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T' ∧ target.arch_inv ctx init_T σ_T'
 
 lemma star_src_correct :
   ∀ (ctx : CONTEXT) (oracle : NONDET) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE),
     source.wf ctx code_S →
     source.safe oracle code_S σ_S →
     source.star oracle code_S σ_S σ_S' tr →
-    ∀ (σ_T : target.STATE) (code_T : target.CODE),
+    ∀ (init_T σ_T : target.STATE) (code_T : target.CODE),
       σ_S ~[ctx] σ_T →
+      target.arch_inv ctx init_T σ_T →
       jit.emit ctx code_S = some code_T →
       ∃ (σ_T' : target.STATE),
-        target.star oracle code_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T' :=
+        target.star oracle code_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T' ∧ target.arch_inv ctx init_T σ_T' :=
 begin
   intros _ _ _ _ _ _ wf_S safe_S star_S,
   induction star_S with s1 s1 s2 s3 tr1 tr2 step_S star_S' IH,
-  { intros _ _ related emitted,
-    existsi σ_T, split, constructor, assumption, },
-  intros _ _ related emitted,
+  { intros _ _ _ related archinv emitted,
+    existsi σ_T, split, constructor, split; assumption, },
+  intros _ _ _ related archinv emitted,
 
   -- Handle the case where s1 is a final state. If it is, it steps to itself and
   -- the target state can take zero steps.
@@ -497,7 +509,7 @@ begin
   cases hemit with f_T hemit,
   cases hemit with hemit_left hemit_right,
 
-  have hstep_T : ∃ t2, target.star oracle f_T σ_T t2 tr1 ∧ s2 ~[ctx] t2,
+  have hstep_T : ∃ t2, target.star oracle f_T σ_T t2 tr1 ∧ s2 ~[ctx] t2 ∧ target.arch_inv ctx init_T t2,
   {
     apply per_insn_correct; assumption <|> refl,
   },
@@ -505,8 +517,9 @@ begin
   cases hstep_T with t2 hstep_T,
   cases hstep_T with hstep_T_left hstep_T_right,
 
-  have hstar_T : ∃ t3, target.star oracle code_T t2 t3 tr2 ∧ s3 ~[ctx] t3,
+  have hstar_T : ∃ t3, target.star oracle code_T t2 t3 tr2 ∧ s3 ~[ctx] t3 ∧ target.arch_inv ctx init_T t3,
   {
+    cases hstep_T_right,
     apply IH; try{assumption},
     apply machine.safe_step; assumption,
   },
@@ -534,20 +547,22 @@ theorem forward_simulation :
       jit.emit ctx code_S = some code_T →
       ∃ (σ_T' : target.STATE),
         target.star oracle code_T σ_T σ_T' tr ∧
-        target.result_of σ_T' = some res :=
+        target.result_of σ_T' = some res ∧
+        target.callee_registers_same ctx σ_T σ_T' :=
 begin
   intros _ _ _ _ _ _ _ _ H1 Hinitial_S H2 H3 _ _ H4 H5,
 
   -- Construct the prologue star
   have hprologue : ∃ t2, target.star oracle (jit.emit_prologue ctx code_S) σ_T t2 [] ∧
-                         σ_S ~[ctx] t2,
+                         σ_S ~[ctx] t2 ∧ target.arch_inv ctx σ_T t2,
   { apply prologue_correct; by assumption, },
   cases hprologue with t2 hprologue,
   cases hprologue,
 
   -- construct the regular instr star using the lemma defined above
-  have hstar : ∃ t3, target.star oracle code_T t2 t3 tr ∧ σ_S' ~[ctx] t3,
+  have hstar : ∃ t3, target.star oracle code_T t2 t3 tr ∧ σ_S' ~[ctx] t3 ∧ target.arch_inv ctx σ_T t3,
   {
+    cases hprologue_right,
     apply star_src_correct; try{assumption},
     apply source.wf_safe; assumption,
   },
@@ -555,9 +570,10 @@ begin
   cases hstar with hstar_left hstar_right,
 
   -- construct the epilogue star
-  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue ctx code_S) t3 t4 [] ∧ source.result_of σ_S' = target.result_of t4,
+  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue ctx code_S) t3 t4 [] ∧ source.result_of σ_S' = target.result_of t4 ∧ target.callee_registers_same ctx σ_T t4,
   {
-    apply epilogue_correct, by assumption, from hstar_right,
+    cases hstar_right,
+    apply epilogue_correct, by assumption, by assumption, by assumption,
     existsi res, from H3,
   },
   cases hepilogue with t4 hepilogue,
@@ -566,12 +582,15 @@ begin
   -- Now we can glue all the steps together
 
   existsi t4,
-  split, tactic.swap,
+  split, tactic.swap, split,
+  cases hepilogue_right with hepilogue_right regs_same,
   {
     -- Handle the easy case first: prove the results match
     rewrite ← hepilogue_right,
     rewrite H3,
   },
+
+  cases hepilogue_right, by assumption,
 
   -- Get the code to run in the target and show code_T is a superset of each component
   let ec := jit.emit_correct,
@@ -653,7 +672,8 @@ begin
     (by assumption) (by assumption) (by assumption) σ_T code_T (by assumption)
     (by assumption),
   cases x with T H,
-  cases H,
+  cases H with H1 H2,
+  cases H2,
   suffices : tr = tr' ∧ T = σ_T', by { split; cc },
   apply target_deterministic; assumption,
 end
@@ -694,7 +714,8 @@ theorem bisimulation :
 
     ((∃ (σ_T' : target.STATE),
       target.star oracle code_T σ_T σ_T' tr ∧
-      target.result_of σ_T' = some res)
+      target.result_of σ_T' = some res ∧
+      target.callee_registers_same ctx σ_T σ_T')
     ↔
     (∃ (σ_S' : source.STATE),
       source.star oracle code_S σ_S σ_S' tr ∧
@@ -704,6 +725,7 @@ begin
   split; intros,
   { cases a_4,
     cases a_4_h,
+    cases a_4_h_right,
     apply backward_simulation; assumption,
   },
   { cases a_4,
