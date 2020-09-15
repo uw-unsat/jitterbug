@@ -366,11 +366,12 @@ namespace target
   noncomputable def step := machine.step pc_of step_insn result_of
   def star := machine.star pc_of step_insn result_of
 
-  -- are the callee-saved registers in two states the same
-  constant callee_registers_same : CONTEXT → STATE → STATE → Prop
+  -- Whether the final state is safe according to architectural safety
+  -- w.r.t. an initial staet
+  constant arch_safe : CONTEXT → STATE → STATE → Prop
 
-  -- arch_inv(ctx, init, s) hold when architectural invariants hold for s
-  -- given the initial state "init".
+  -- Whether the architectural invariants hold for some state
+  -- w.r.t an initial state
   constant arch_inv : CONTEXT → STATE → STATE → Prop
 
 end target
@@ -442,7 +443,7 @@ axiom epilogue_correct :
     ∃ (t2 : target.STATE),
       target.star oracle (jit.emit_epilogue ctx code_S) t1 t2 [] ∧
       source.result_of s1 = target.result_of t2 ∧
-      target.callee_registers_same ctx init_t t2
+      target.arch_safe ctx init_t t2
 
 -- If the JIT produces some code for one source instruction,
 -- then starting from related source and target states,
@@ -548,7 +549,7 @@ theorem forward_simulation :
       ∃ (σ_T' : target.STATE),
         target.star oracle code_T σ_T σ_T' tr ∧
         target.result_of σ_T' = some res ∧
-        target.callee_registers_same ctx σ_T σ_T' :=
+        target.arch_safe ctx σ_T σ_T' :=
 begin
   intros _ _ _ _ _ _ _ _ H1 Hinitial_S H2 H3 _ _ H4 H5,
 
@@ -570,7 +571,7 @@ begin
   cases hstar with hstar_left hstar_right,
 
   -- construct the epilogue star
-  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue ctx code_S) t3 t4 [] ∧ source.result_of σ_S' = target.result_of t4 ∧ target.callee_registers_same ctx σ_T t4,
+  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue ctx code_S) t3 t4 [] ∧ source.result_of σ_S' = target.result_of t4 ∧ target.arch_safe ctx σ_T t4,
   {
     cases hstar_right,
     apply epilogue_correct, by assumption, by assumption, by assumption,
@@ -715,7 +716,7 @@ theorem bisimulation :
     ((∃ (σ_T' : target.STATE),
       target.star oracle code_T σ_T σ_T' tr ∧
       target.result_of σ_T' = some res ∧
-      target.callee_registers_same ctx σ_T σ_T')
+      target.arch_safe ctx σ_T σ_T')
     ↔
     (∃ (σ_S' : source.STATE),
       source.star oracle code_S σ_S σ_S' tr ∧
