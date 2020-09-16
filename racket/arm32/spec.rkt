@@ -76,7 +76,7 @@
 (define (code-size vec)
   (* 4 (vector-length vec)))
 
-(define (arm32-cpu-invariants ctx cpu)
+(define (arm32-arch-invariants ctx initial-cpu cpu)
   (apply &&
     (cons (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
           (for/list ([inv (arm32-cpu-invariant-registers ctx cpu)])
@@ -88,7 +88,7 @@
   (list (cons ARM_FP stackbase)
         (cons ARM_SP (bvsub stackbase (context-stack_size ctx)))))
 
-(define (arm32-init-cpu-invariants! ctx arm32-cpu)
+(define (arm32-init-arch-invariants! ctx arm32-cpu)
   (for ([inv (arm32-cpu-invariant-registers ctx arm32-cpu)])
     (arm32:cpu-gpr-set! arm32-cpu (car inv) (cdr inv))))
 
@@ -127,8 +127,8 @@
   #:init-cpu init-arm32-cpu
   #:simulate-call arm32-simulate-call
   #:supports-pseudocall #f
-  #:cpu-invariants arm32-cpu-invariants
-  #:init-cpu-invariants! arm32-init-cpu-invariants!
+  #:arch-invariants arm32-arch-invariants
+  #:init-arch-invariants! arm32-init-arch-invariants!
   #:abstract-regs cpu-abstract-regs
   #:run-code run-jitted-code
   #:run-jit build_insn

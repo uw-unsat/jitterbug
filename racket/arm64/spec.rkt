@@ -63,7 +63,7 @@
 (define (code-size vec)
   (* 4 (vector-length vec)))
 
-(define (cpu-invariants ctx cpu)
+(define (arch-invariants ctx initial-cpu cpu)
   (define pc (arm64:cpu-pc cpu))
   (core:bvaligned? pc (bv 4 (type-of pc))))
 
@@ -95,7 +95,7 @@
   #:target-bitwidth 64
   #:init-cpu init-arm64-cpu
   #:simulate-call arm64-simulate-call
-  #:cpu-invariants cpu-invariants
+  #:arch-invariants arch-invariants
   #:abstract-regs cpu-abstract-regs
   #:run-code run-jitted-code
   #:run-jit build_insn

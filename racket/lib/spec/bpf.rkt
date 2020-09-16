@@ -17,6 +17,7 @@
          verify-split-asserts
          default-select-bpf-regs
          (struct-out bpf-target)
+         (struct-out program-input)
          make-bpf-target
          max-insn
          bpf-jit-specification
@@ -151,9 +152,8 @@
   bitwidth ; bitwidth of target ISA
   emit-insn ; Function to run the JIT for the target ISA
   emit-prologue ; Function to emit the prologue
-  prologue-assumptions ; Assumptions that must hold on prologue entry
+  initial-state? ; Assumptions that must hold on prologue entry
   emit-epilogue ; Function to emit the epilogue
-  epilogue-guarantees ; What epilogue should guarantee
   select-bpf-regs ; Function to compute list of bpf possible BPF registers
   run-jitted-code ; How to run the jitted code on the target isa
   simulate-call ; Simulate a function call for the target
@@ -163,8 +163,8 @@
   abstract-return-value ; Abstraction from target to return value
   init-cpu ; Create a new cpu from (target_pc, bpf_cpu)
   set-cpu-pc! ; Set the program counter in CPU
-  cpu-invariants ; Implementation invariants for CPU
-  init-cpu-invariants! ; Initialize CPU with invariants, e.g., to concretize registers
+  arch-invariants ; Implementation invariants for CPU
+  init-arch-invariants! ; Initialize CPU with invariants, e.g., to concretize registers
   max-size ; Maximum size of target generated code
   init-ctx ; Initialize JIT context
   ctx-valid? ; Is it a valid context for a particular instruction index?
@@ -174,8 +174,14 @@
   function-alignment ; Minimum alignment for function addresses
   max-stack-usage ; Maximum stack size usage
   bpf-stack-range ; (ctx) -> (bottom x top) representing range of addrs in the BPF stack
-  saved-regs-equal? ; Are the saved regs in ctx equal to the regs in the CPU?
+  copy-target-cpu ; Make a copy of the target CPU
 ))
+
+; Program input is fp and r1
+(struct program-input (r1) #:transparent)
+
+(define (bpf-initial-state? ctx input cpu)
+  (equal? (bpf:reg-ref cpu BPF_REG_1) (program-input-r1 input)))
 
 (define run-jit-split-regs? (make-environment-flag "ENABLE_JIT_SPLIT_REGS" #f))
 
@@ -183,9 +189,8 @@
   #:target-bitwidth target-bitwidth
   #:run-jit run-jit
   #:emit-prologue [emit-prologue #f]
-  #:prologue-assumptions [prologue-assumptions #f]
+  #:initial-state? [initial-state? #f]
   #:emit-epilogue [emit-epilogue #f]
-  #:epilogue-guarantees [epilogue-guarantees #f]
   #:abstract-regs abstract-regs
   #:abstract-tail-call-cnt [abstract-tail-call-cnt (lambda a (bv 0 32))]
   #:abstract-return-value [abstract-return-value #f]
@@ -195,31 +200,31 @@
   #:run-code run-jitted-code
   #:init-cpu init-cpu
   #:set-cpu-pc! [set-cpu-pc! #f]
-  #:cpu-invariants [cpu-invariants (lambda a #t)]
-  #:init-cpu-invariants! [init-cpu-invariants! (lambda a (void))]
+  #:arch-invariants [arch-invariants (lambda a #t)]
+  #:init-arch-invariants! [init-arch-invariants! (lambda a (void))]
   #:max-target-size max-target-size
   #:init-ctx init-ctx
   #:bpf-to-target-pc bpf-to-target-pc
-  #:saved-regs-equal? [saved-regs-equal? #f]
   #:code-size code-size
   #:max-stack-usage max-stack-usage
   #:bpf-stack-range [bpf-stack-range (lambda (ctx) #f)]
   #:have-efficient-unaligned-access [have-efficient-unaligned-access #t]
   #:ctx-valid? [ctx-valid? (lambda a #t)]
-  #:function-alignment [function-alignment 1])
+  #:function-alignment [function-alignment 1]
+  #:copy-target-cpu [copy-target-cpu #f])
 
-  (bpf-target target-bitwidth run-jit emit-prologue prologue-assumptions emit-epilogue epilogue-guarantees
+  (bpf-target target-bitwidth run-jit emit-prologue initial-state? emit-epilogue
               select-bpf-regs run-jitted-code
               simulate-call supports-pseudocall abstract-regs abstract-tail-call-cnt abstract-return-value
               init-cpu set-cpu-pc!
-              cpu-invariants init-cpu-invariants!
+              arch-invariants init-arch-invariants!
               (bv max-target-size target-bitwidth)
               init-ctx ctx-valid? bpf-to-target-pc code-size
               have-efficient-unaligned-access
               (bv function-alignment 64)
               max-stack-usage
               bpf-stack-range
-              saved-regs-equal?))
+              copy-target-cpu))
 
 (define max-insn (make-parameter (bv #x1000000 32)))
 
@@ -387,8 +392,8 @@
     (define run-jitted-code (bpf-target-run-jitted-code target))
     (define simulate-call (bpf-target-simulate-call target))
     (define init-cpu (bpf-target-init-cpu target))
-    (define cpu-invariants (bpf-target-cpu-invariants target))
-    (define init-cpu-invariants! (bpf-target-init-cpu-invariants! target))
+    (define arch-invariants (bpf-target-arch-invariants target))
+    (define init-arch-invariants! (bpf-target-init-arch-invariants! target))
     (define init-ctx (bpf-target-init-ctx target))
     (define bpf-to-target-pc (bpf-target-bpf-to-target-pc target))
     (define code-size (bpf-target-code-size target))
@@ -527,8 +532,12 @@
 
       ; Create target CPU with starting program counter
       (define target-cpu (init-cpu ctx target-pc-start (copy-hybrid-memmgr memmgr)))
-      (init-cpu-invariants! ctx target-cpu)
+      (init-arch-invariants! ctx target-cpu)
       (add-symbolics target-cpu)
+
+      ; Create representation of initial target CPU for validating callee-saved registers.
+      (define initial-cpu (init-cpu ctx target-pc-base (copy-hybrid-memmgr memmgr)))
+      (add-symbolics initial-cpu)
 
       (define insns
         (if (run-jit-split-regs?)
@@ -537,7 +546,7 @@
               (run-jit insn-idx (struct-copy bpf:insn bpf-insn [src src] [dst dst]) next-bpf-insn ctx))
             (run-jit insn-idx bpf-insn next-bpf-insn ctx)))
 
-      (when (&& (cpu-invariants ctx target-cpu)
+      (when (&& (arch-invariants ctx initial-cpu target-cpu)
                 (equal? (bpf:cpu-tail-call-cnt bpf-cpu) (abstract-tail-call-cnt target-cpu))
                 (live-regs-equal? liveset (bpf:cpu-regs bpf-cpu) (abstract-regs target-cpu)))
 
@@ -595,7 +604,7 @@
                           (core:memmgr-invariants (core:gen-cpu-memmgr target-cpu)))
                       #:msg "bpf-jit-specification: memmgr invariants must continue to hold")
 
-          (bug-assert (cpu-invariants ctx target-cpu)
+          (bug-assert (arch-invariants ctx initial-cpu target-cpu)
                       #:msg "bpf-jit-specification: target CPU invariants must continue to hold")
 
           ; Compute the final expected target PC. If BPF PC is #f, execution ended
@@ -664,9 +673,9 @@
   (define run-jitted-code (bpf-target-run-jitted-code target))
   (define simulate-call (bpf-target-simulate-call target))
   (define init-cpu (bpf-target-init-cpu target))
-  (define cpu-invariants (bpf-target-cpu-invariants target))
+  (define arch-invariants (bpf-target-arch-invariants target))
   (define set-cpu-pc! (bpf-target-set-cpu-pc! target))
-  (define init-cpu-invariants! (bpf-target-init-cpu-invariants! target))
+  (define init-arch-invariants! (bpf-target-init-arch-invariants! target))
   (define init-ctx (bpf-target-init-ctx target))
   (define emit-prologue (bpf-target-emit-prologue target))
   (define bpf-to-target-pc (bpf-target-bpf-to-target-pc target))
@@ -676,7 +685,7 @@
   (define function-alignment (bpf-target-function-alignment target))
   (define max-stack-usage (bpf-target-max-stack-usage target))
   (define bpf-stack-range (bpf-target-bpf-stack-range target))
-  (define prologue-assumptions (bpf-target-prologue-assumptions target))
+  (define initial-state? (bpf-target-initial-state? target))
 
   ; Create symbolic register content for each BPF register
   (define-symbolic* r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 ax (bitvector 64))
@@ -752,7 +761,10 @@
 
       ; Create target CPU with starting program counter
       (define target-cpu (init-cpu ctx target-pc-start (copy-hybrid-memmgr memmgr)))
-      (init-cpu-invariants! ctx target-cpu)
+      (init-arch-invariants! ctx target-cpu)
+
+      ; Create representation of initial target CPU for validating callee-saved registers.
+      (define initial-cpu (init-cpu ctx target-pc-base (copy-hybrid-memmgr memmgr)))
 
       (define tcall-insns (run-jit insn-idx bpf-insn #f ctx))
 
@@ -766,7 +778,7 @@
                       (integer->bitvector (code-size tcall-insns) (bitvector target-bitwidth))))))
 
       (when (&& precondition-next-instruction
-                (cpu-invariants ctx target-cpu)
+                (arch-invariants ctx initial-cpu target-cpu)
                 (equal? (bpf:cpu-tail-call-cnt bpf-cpu) (abstract-tail-call-cnt target-cpu))
                 (live-regs-equal? liveset (bpf:cpu-regs bpf-cpu) (abstract-regs target-cpu)))
 
@@ -809,7 +821,7 @@
                 (bug-assert (live-regs-equal? liveset (bpf:cpu-regs bpf-cpu) (abstract-regs target-cpu))
                             #:msg "tail-call: failed tail call must preserve registers")
 
-                (bug-assert (cpu-invariants ctx target-cpu)
+                (bug-assert (arch-invariants ctx initial-cpu target-cpu)
                             #:msg "tail-call: failed tail call must maintain invariants")
 
                 (bug-assert (equal? (make-target-pc (trunc 32 (bpf:cpu-pc bpf-cpu)))
@@ -830,8 +842,10 @@
                                     bpf-context-ptr)
                             #:msg "tail call should not clobber BPF R1")
 
+                (define next-program-input (program-input bpf-context-ptr))
+
                 ; Prologue assumptions must hold on entry.
-                (bug-assert (prologue-assumptions ctx target-cpu)
+                (bug-assert (initial-state? ctx next-program-input target-cpu)
                             #:msg "Prologue assumptions should hold after tail call")
 
                 (bug-assert (equal? (core:gen-cpu-pc target-cpu) (bvadd tcall-addr (bv 4 32)))
@@ -862,11 +876,11 @@
   (define run-jitted-code (bpf-target-run-jitted-code target))
   (define init-cpu (bpf-target-init-cpu target))
   (define max-stack-usage (bpf-target-max-stack-usage target))
-  (define prologue-assumptions (bpf-target-prologue-assumptions target))
-  (define cpu-invariants (bpf-target-cpu-invariants target))
+  (define initial-state? (bpf-target-initial-state? target))
+  (define arch-invariants (bpf-target-arch-invariants target))
   (define bpf-stack-range (bpf-target-bpf-stack-range target))
   (define abstract-regs (bpf-target-abstract-regs target))
-  (define saved-regs-equal? (bpf-target-saved-regs-equal? target))
+  (define copy-target-cpu (bpf-target-copy-target-cpu target))
 
   (define-symbolic* target-pc-base (bitvector target-bitwidth))
   (define prog-aux (make-bpf-prog-aux))
@@ -874,18 +888,38 @@
 
   (define memmgr (make-hybrid-memmgr target-bitwidth 64 (max-stack-usage ctx)))
   (define target-cpu (init-cpu ctx target-pc-base (copy-hybrid-memmgr memmgr)))
+  (define initial-cpu (copy-target-cpu target-cpu))
 
   (define bpf-stack-top (bvadd (hybrid-memmgr-stackbase memmgr) (cdr (bpf-stack-range ctx))))
+
+  (define-symbolic* input-r1 (bitvector 64))
+  (define input (program-input input-r1))
+
+  (define-symbolic* r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 ax (bitvector 64))
+  (define bpf-regs (bpf:regs r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 ax))
+  (define bpf-cpu (bpf:init-cpu #:make-memmgr (thunk #f)
+                                #:make-callmgr (thunk #f)))
+  (bpf:set-cpu-regs! bpf-cpu (struct-copy bpf:regs bpf-regs))
+
+  ; Construct set of live registers. Only R1 and FP live initially.
+  (define liveset (bpf:regs #f #t #f #f #f #f #f #f #f #f #t #f))
 
   (define pre (&&
     ; Memory manager invariants hold (e.g., stack alignment)
     (core:memmgr-invariants memmgr)
 
-    ; Prologue assumptions hold
-    (prologue-assumptions ctx target-cpu)
+    ; Target is initial state
+    (initial-state? ctx input target-cpu)
 
-    ; Saved regs are stored in ctx
-    (saved-regs-equal? ctx target-cpu)
+    ; Source is initial state
+    (bpf-initial-state? ctx input bpf-cpu)
+
+    ; Context pointer upper bits are 0.
+    (implies (< target-bitwidth 64)
+      (bvzero? (extract 63 (- 64 target-bitwidth) input-r1)))
+
+    ; Initial BPF state points to stack top
+    (equal? (bpf:@reg-ref bpf-regs BPF_REG_FP) (zero-extend bpf-stack-top (bitvector 64)))
 
     ; BPF stack depth in bounds
     (bvule (bpf-prog-aux-stack_depth prog-aux) (bv 512 32))))
@@ -895,13 +929,15 @@
       (define insns (emit-prologue ctx))
       (run-jitted-code target-pc-base target-cpu insns)
       (define regs (abstract-regs target-cpu))
-      (bug-assert (equal? (trunc target-bitwidth (bpf:@reg-ref regs BPF_REG_FP))
-                          bpf-stack-top)
-                  #:msg "Prologue must initialize BPF_REG_FP to stack top")
-      (bug-assert (cpu-invariants ctx target-cpu)
+      (void)
+
+      (bug-assert (live-regs-equal? liveset (bpf:cpu-regs bpf-cpu) (abstract-regs target-cpu))
+                  #:msg "regs must be equivalent after prologue")
+      (bug-assert (arch-invariants ctx initial-cpu target-cpu)
                   #:msg "CPU invariants must hold after running prologue")
       (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
-                  #:msg "Prologue must not generate memory trace events")))
+                  #:msg "Prologue must not generate memory trace events")
+      ))
 
   null)
 
@@ -912,8 +948,7 @@
   (define run-jitted-code (bpf-target-run-jitted-code target))
   (define init-cpu (bpf-target-init-cpu target))
   (define max-stack-usage (bpf-target-max-stack-usage target))
-  (define epilogue-guarantees (bpf-target-epilogue-guarantees target))
-  (define cpu-invariants (bpf-target-cpu-invariants target))
+  (define arch-invariants (bpf-target-arch-invariants target))
   (define bpf-stack-range (bpf-target-bpf-stack-range target))
   (define abstract-regs (bpf-target-abstract-regs target))
   (define abstract-return-value (bpf-target-abstract-return-value target))
@@ -925,6 +960,18 @@
   (define memmgr (make-hybrid-memmgr target-bitwidth 64 (max-stack-usage ctx)))
   (define target-cpu (init-cpu ctx target-pc-base (copy-hybrid-memmgr memmgr)))
 
+  ; Create representation of initial target CPU for validating callee-saved registers.
+  (define initial-cpu (init-cpu ctx target-pc-base (copy-hybrid-memmgr memmgr)))
+
+  (define-symbolic* r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 ax (bitvector 64))
+  (define bpf-regs (bpf:regs r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 ax))
+  (define bpf-cpu (bpf:init-cpu #:make-memmgr (thunk #f)
+                                #:make-callmgr (thunk #f)))
+  (bpf:set-cpu-regs! bpf-cpu (struct-copy bpf:regs bpf-regs))
+
+  ; Construct set of live registers. Only R0 (return value) is live.
+  (define liveset (bpf:regs #t #f #f #f #f #f #f #f #f #f #f #f))
+
   (parameterize ([enable-stack-addr-symopt #f])
 
     (define pre (&&
@@ -934,16 +981,19 @@
       (bvule (bpf-prog-aux-stack_depth prog-aux) (bv 512 32))))
 
     (when pre
-      (when (cpu-invariants ctx target-cpu)
-        (define bpf-return-value (trunc 32 (bpf:@reg-ref (abstract-regs target-cpu) BPF_REG_0)))
+      (when (&& (arch-invariants ctx initial-cpu target-cpu #:final #f)
+                (live-regs-equal? liveset (abstract-regs target-cpu) bpf-regs))
+
+        (define bpf-return-value (trunc 32 (bpf:reg-ref bpf-cpu BPF_REG_0)))
         (define insns (emit-epilogue ctx))
 
         (run-jitted-code target-pc-base target-cpu insns)
         (bug-assert (equal? (abstract-return-value ctx target-cpu) bpf-return-value)
                     #:msg "Return value must match after running epilogue")
-        (bug-assert (epilogue-guarantees ctx target-cpu)
+        (bug-assert (arch-invariants ctx initial-cpu target-cpu #:final #t)
                     #:msg "epilogue guarantees must hold after running epilogue")
         (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
-                    #:msg "Epilogue must not generate memory trace events"))))
+                    #:msg "Epilogue must not generate memory trace events")
+      )))
 
   null)

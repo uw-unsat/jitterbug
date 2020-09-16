@@ -34,11 +34,8 @@
   ; Some stack size
   (define-symbolic* stack_size (bitvector 32))
 
-  ; Dummy saved regs
-  (define saved-regs #f)
-
   (define ctx (context program-length (vector) insns-addr ninsns epilogue-offset stack_size offsets
-                       seen saved-regs aux))
+                       seen aux))
   ctx)
 
 (define (riscv-ctx-valid? ctx insn-idx)
@@ -82,3 +79,8 @@
   (apply bpf:regs
     (for/list ([i (in-range MAX_BPF_JIT_REG)])
       (rv_get_bpf_reg rv_cpu (bpf:idx->reg i)))))
+
+(define (riscv-copy-cpu cpu)
+  (struct-copy riscv:cpu cpu
+    [csrs (struct-copy riscv:csrs (riscv:cpu-csrs cpu))]
+    [gprs (struct-copy riscv:gprs (riscv:cpu-gprs cpu))]))

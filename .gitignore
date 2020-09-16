@@ -1,3 +1,9 @@
 *.generated.*
 compiled/
 .DS_Store
+*.o
+*.ll
+*.ll.rkt
+*.elf
+*.globals.rkt
+*.map.rkt

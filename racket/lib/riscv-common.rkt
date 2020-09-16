@@ -59,8 +59,7 @@
 (define RV_REG_T5 't5)
 (define RV_REG_T6 't6)
 
-(struct context (program-length insns insns-addr ninsns epilogue-offset stack_size offset flags
-                 saved-regs aux) #:mutable #:transparent)
+(struct context (program-length insns insns-addr ninsns epilogue-offset stack_size offset flags aux) #:mutable #:transparent)
 
 (define (ninsns_rvoff ninsns)
   (bvshl ninsns (bv 1 32)))

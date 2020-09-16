@@ -79,19 +79,18 @@
   (riscv:gpr-set! cpu RV_REG_A0 (extract 31 0 result))
   (riscv:gpr-set! cpu RV_REG_A1 (extract 63 32 result)))
 
-(define (rv32-init-cpu-invariants! ctx cpu)
+(define (rv32-init-arch-invariants! ctx cpu)
   (for ([inv (rv32-cpu-invariant-registers ctx cpu)])
     (riscv:gpr-set! cpu (car inv) (cdr inv))))
 
-(define (rv32-cpu-invariants ctx cpu)
+(define (rv32-arch-invariants ctx saved-cpu cpu #:final [final #f])
   (define bpf_stack_depth (bpf-prog-aux-stack_depth (context-aux ctx)))
   (define pc (riscv:cpu-pc cpu))
   (define memmgr (riscv:cpu-memmgr cpu))
-  (define saved-regs (context-saved-regs ctx))
   (define (loadsavedreg off)
     (core:memmgr-load memmgr (hybrid-memmgr-stackbase memmgr)
                       (bv off 32)
-                      (bv 4 32) #:dbg 'rv32-cpu-invariants))
+                      (bv 4 32) #:dbg 'rv32-arch-invariants))
 
   (&&
     ; Program counter is aligned.
@@ -108,25 +107,35 @@
                 (bv STACK_ALIGN 32))) ; Round up to align stack to 16 bytes.
 
     ; Saved registers preserved.
-    (equal? (riscv:@gpr-ref saved-regs 'ra) (loadsavedreg (- 4)))
-    (equal? (riscv:@gpr-ref saved-regs 'fp) (loadsavedreg (- 8)))
-    (equal? (riscv:@gpr-ref saved-regs 's1) (loadsavedreg (- 12)))
-    (equal? (riscv:@gpr-ref saved-regs 's2) (loadsavedreg (- 16)))
-    (equal? (riscv:@gpr-ref saved-regs 's3) (loadsavedreg (- 20)))
-    (equal? (riscv:@gpr-ref saved-regs 's4) (loadsavedreg (- 24)))
-    (equal? (riscv:@gpr-ref saved-regs 's5) (loadsavedreg (- 28)))
-    (equal? (riscv:@gpr-ref saved-regs 's6) (loadsavedreg (- 32)))
-    (equal? (riscv:@gpr-ref saved-regs 's7) (loadsavedreg (- 36)))
+    (cond
+      ; If state is not final, then saved registers are on stack.
+      [(! final)
+        (&& (equal? (riscv:gpr-ref saved-cpu 'ra) (loadsavedreg (- 4)))
+            (equal? (riscv:gpr-ref saved-cpu 'fp) (loadsavedreg (- 8)))
+            (equal? (riscv:gpr-ref saved-cpu 's1) (loadsavedreg (- 12)))
+            (equal? (riscv:gpr-ref saved-cpu 's2) (loadsavedreg (- 16)))
+            (equal? (riscv:gpr-ref saved-cpu 's3) (loadsavedreg (- 20)))
+            (equal? (riscv:gpr-ref saved-cpu 's4) (loadsavedreg (- 24)))
+            (equal? (riscv:gpr-ref saved-cpu 's5) (loadsavedreg (- 28)))
+            (equal? (riscv:gpr-ref saved-cpu 's6) (loadsavedreg (- 32)))
+            (equal? (riscv:gpr-ref saved-cpu 's7) (loadsavedreg (- 36)))
+            (apply && (for/list ([reg '(gp tp s8 s9 s10 s11)])
+              (equal? (riscv:gpr-ref saved-cpu reg)
+                      (riscv:gpr-ref cpu reg)))))]
 
-    ; Unused callee-saved registers preserved
-    (apply && (for/list ([reg '(gp tp s8 s9 s10 s11)])
-      (equal? (riscv:@gpr-ref saved-regs reg)
-              (riscv:gpr-ref cpu reg))))
+        ; For final states, regs must match.
+        [else
+          ; Callee-saved registers are preserved by the BPF JITed program.
+          (apply && (for/list ([reg '(ra gp tp fp s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11)])
+            (equal? (riscv:gpr-ref saved-cpu reg)
+                    (riscv:gpr-ref cpu reg))))])
 
     ; Registers have the correct concretized values.
-    (apply &&
-      (for/list ([inv (rv32-cpu-invariant-registers ctx cpu)])
-        (equal? (riscv:gpr-ref cpu (car inv)) (cdr inv))))))
+    (if (! final)
+      (apply &&
+        (for/list ([inv (rv32-cpu-invariant-registers ctx cpu)])
+          (equal? (riscv:gpr-ref cpu (car inv)) (cdr inv))))
+      (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr)))))
 
 (define (rv32-cpu-invariant-registers ctx cpu)
   (define memmgr (riscv:cpu-memmgr cpu))
@@ -136,7 +145,8 @@
                          (context-stack_size ctx)))))
 
 ; Assumptions on state before prologue entry.
-(define (rv32-prologue-assumptions ctx cpu)
+; Initial state is list of (fp r1)
+(define (rv32-initial-state? ctx input cpu)
   (define pc (riscv:cpu-pc cpu))
   (define memmgr (riscv:cpu-memmgr cpu))
   (&&
@@ -145,28 +155,28 @@
     ; Stack pointer is aligned.
     (core:bvaligned? (riscv:gpr-ref cpu 'sp) (bv STACK_ALIGN 32))
     ; Stack pointer points to base of stack.
-    (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr))))
+    (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr))
 
-(define (rv32-saved-regs-equal? ctx cpu)
-  (equal? (context-saved-regs ctx) (riscv:cpu-gprs cpu)))
+    ; Program input matches
+    (equal? (rv32_get_bpf_reg cpu BPF_REG_1) (program-input-r1 input))))
 
-; Things guaranteed by epilogue.
-(define (rv32-epilogue-guarantees ctx cpu)
-  (define pc (riscv:cpu-pc cpu))
-  (define saved-regs (context-saved-regs ctx))
-  (define memmgr (riscv:cpu-memmgr cpu))
-  (&&
+;;; ; Things guaranteed by epilogue.
+;;; (define (rv32-epilogue-guarantees ctx cpu)
+;;;   (define pc (riscv:cpu-pc cpu))
+;;;   (define saved-regs #f)
+;;;   (define memmgr (riscv:cpu-memmgr cpu))
+;;;   (&&
 
-    ; Callee-saved registers are preserved by the BPF JITed program.
-    (apply && (for/list ([reg '(ra gp tp fp s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11)])
-      (equal? (riscv:@gpr-ref saved-regs reg)
-              (riscv:gpr-ref cpu reg))))
+;;;     ; Callee-saved registers are preserved by the BPF JITed program.
+;;;     (apply && (for/list ([reg '(ra gp tp fp s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11)])
+;;;       (equal? (riscv:@gpr-ref saved-regs reg)
+;;;               (riscv:gpr-ref cpu reg))))
 
-    ; Stack pointer is aligned.
-    (core:bvaligned? (riscv:gpr-ref cpu 'sp) (bv STACK_ALIGN 32))
+;;;     ; Stack pointer is aligned.
+;;;     (core:bvaligned? (riscv:gpr-ref cpu 'sp) (bv STACK_ALIGN 32))
 
-    ; Stack pointer points to base of stack.
-    (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr))))
+;;;     ; Stack pointer points to base of stack.
+;;;     (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr))))
 
 (define (rv32-max-stack-usage ctx)
   (define bpf_stack_depth (bpf-prog-aux-stack_depth (context-aux ctx)))
@@ -179,11 +189,6 @@
 (define (rv32-init-ctx insns-addr insn-idx program-length aux)
   (define ctx (riscv-init-ctx insns-addr insn-idx program-length aux))
   (define bpf_stack_depth (bpf-prog-aux-stack_depth aux))
-
-  ; Ghost state for the value of registers before the BPF program
-  (define-symbolic* saved-regs (bitvector 32) [31])
-  (set-context-saved-regs! ctx (apply riscv:gprs saved-regs))
-
   ctx)
 
 ; Give the range of BPF stack addresses as an offset to stackbase.
@@ -203,14 +208,13 @@
   #:abstract-regs (riscv-abstract-regs rv32_get_bpf_reg)
   #:abstract-tail-call-cnt (lambda (cpu) (bvsub (bv MAX_TAIL_CALL_CNT 32) (riscv:gpr-ref cpu RV_REG_TCC)))
   #:simulate-call rv32-simulate-call
-  #:cpu-invariants rv32-cpu-invariants
-  #:init-cpu-invariants! rv32-init-cpu-invariants!
+  #:arch-invariants rv32-arch-invariants
+  #:init-arch-invariants! rv32-init-arch-invariants!
   #:run-code run-jitted-code
   #:run-jit emit_insn
   #:emit-prologue (lambda (ctx) (bpf_jit_build_prologue ctx) (context-insns ctx))
   #:emit-epilogue (lambda (ctx) (bpf_jit_build_epilogue ctx) (context-insns ctx))
-  #:prologue-assumptions rv32-prologue-assumptions
-  #:epilogue-guarantees rv32-epilogue-guarantees
+  #:initial-state? rv32-initial-state?
   #:init-ctx rv32-init-ctx
   #:bpf-to-target-pc bpf-to-target-pc
   #:code-size code-size
@@ -220,8 +224,8 @@
   #:bpf-stack-range rv32-bpf-stack-range
   #:function-alignment 4
   #:abstract-return-value (lambda (ctx cpu) (riscv:gpr-ref cpu 'a0))
-  #:saved-regs-equal? rv32-saved-regs-equal?
   #:ctx-valid? riscv-ctx-valid?
+  #:copy-target-cpu riscv-copy-cpu
 ))
 
 (define (check-jit code)

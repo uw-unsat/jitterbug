@@ -49,11 +49,11 @@
   ; Set return value
   (riscv:gpr-set! cpu RV_REG_A0 result))
 
-(define (rv64-init-cpu-invariants! ctx cpu)
+(define (rv64-init-arch-invariants! ctx cpu)
   (for ([inv (rv64-cpu-invariant-registers ctx cpu)])
     (riscv:gpr-set! cpu (car inv) (cdr inv))))
 
-(define (rv64-cpu-invariants ctx cpu)
+(define (rv64-arch-invariants ctx initial-cpu cpu)
   (define pc (riscv:cpu-pc cpu))
   (&&
     ; Upper bits of tail-call counter are sign extension of lower
@@ -92,8 +92,8 @@
   #:abstract-regs (riscv-abstract-regs rv64_get_bpf_reg)
   #:abstract-tail-call-cnt (lambda (cpu) (bvsub (bv MAX_TAIL_CALL_CNT 32) (extract 31 0 (riscv:gpr-ref cpu RV_REG_TCC_SAVED))))
   #:simulate-call rv64-simulate-call
-  #:cpu-invariants rv64-cpu-invariants
-  #:init-cpu-invariants! rv64-init-cpu-invariants!
+  #:arch-invariants rv64-arch-invariants
+  #:init-arch-invariants! rv64-init-arch-invariants!
   #:run-code run-jitted-code
   #:run-jit emit_insn
   #:init-ctx rv64-init-ctx

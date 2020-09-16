@@ -67,7 +67,7 @@
   (bvadd (context-base-addr ctx)
          ((context-addrs ctx) i)))
 
-(define (cpu-invariants ctx stack-cpu x86)
+(define (arch-invariants ctx stack-cpu x86)
   (define edi (x86:cpu-gpr-ref x86 (x86:symbol->gpr32 'edi)))
   (define eax (x86:cpu-gpr-ref x86 (x86:symbol->gpr32 'eax)))
   (define x86-mm (x86:cpu-memmgr x86))
@@ -136,7 +136,7 @@
     ; tying source and target hold.
     (when (and (core:memmgr-invariants x86-memmgr)
                (core:memmgr-invariants stacklang-memmgr)
-               (cpu-invariants ctx stacklang-cpu x86-cpu))
+               (arch-invariants ctx stacklang-cpu x86-cpu))
 
       (cond
         [(stacklang:stop? insn)
@@ -165,4 +165,4 @@
             (run-jitted-code base-addr x86-cpu jited-code)
 
             ; Assert invariants continue to hold.
-            (assert (cpu-invariants ctx stacklang-cpu x86-cpu)))]))))
+            (assert (arch-invariants ctx stacklang-cpu x86-cpu)))]))))

@@ -47,11 +47,11 @@
            (define hival (loadreg hi i))
            (concat hival loval))))
 
-(define (init-cpu-invariants! ctx cpu)
+(define (init-arch-invariants! ctx cpu)
   (for ([inv (cpu-invariant-registers ctx cpu)])
     (x86:cpu-gpr-set! cpu (car inv) (cdr inv))))
 
-(define (cpu-invariants ctx cpu)
+(define (arch-invariants ctx initial-cpu cpu)
   (apply &&
     (for/list ([inv (cpu-invariant-registers ctx cpu)])
       (equal? (x86:cpu-gpr-ref cpu (car inv)) (cdr inv)))))
@@ -150,8 +150,8 @@
   #:run-jit emit_insn
   #:run-code run-jitted-code
   #:init-cpu init-x86-cpu
-  #:init-cpu-invariants! init-cpu-invariants!
-  #:cpu-invariants cpu-invariants
+  #:init-arch-invariants! init-arch-invariants!
+  #:arch-invariants arch-invariants
   #:max-target-size #x800000
   #:init-ctx init-ctx
   #:code-size code-size
