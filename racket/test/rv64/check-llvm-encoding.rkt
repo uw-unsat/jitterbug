@@ -48,7 +48,7 @@
 
 ; Make ctx with only insns and ninsns
 (define (make-dummy-context)
-  (context #f (vector) #f (bv 0 32) #f #f #f #f #f #f))
+  (context #f (vector) #f (bv 0 32) #f #f #f #f #f))
 
 (define (check-emit_addi)
   (define rd (choose-reg))
