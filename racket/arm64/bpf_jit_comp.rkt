@@ -146,12 +146,20 @@
     (set! shift (bvadd shift (bv 16 32)))
     (emit (A64_MOVK (bv 1 1) reg (bvand tmp (bv #xffff 64)) shift) ctx)))
 
-(define (bpf2a64_offset bpf_to bpf_from ctx)
-  (define offset (context-offset ctx))
-  (define to (offset bpf_to))
-  ; -1 to account for the branch instruction
-  (define from (bvsub (offset bpf_from) (bv 1 32)))
-  (bvsub to from))
+(define (bpf2a64_offset bpf_insn off ctx)
+  ; bpf_insn++;
+  (set! bpf_insn (bvadd1 bpf_insn))
+
+  (define (offset x)
+    (core:bug-on (bvslt x (bv 0 32)) #:msg "ctx->offset[x] where x < 0")
+    ((context-offset ctx) x))
+
+  ; * Whereas arm64 branch instructions encode the offset
+  ; * from the branch itself, so we must subtract 1 from the
+  ; * instruction offset.
+  ; return ctx->offset[bpf_insn + off] - (ctx->offset[bpf_insn] - 1);
+  (bvsub (offset (bvadd bpf_insn off))
+         (bvsub1 (offset bpf_insn))))
 
 (define (epilogue_offset ctx)
   (define to (context-epilogue-offset ctx))
@@ -178,7 +186,7 @@
 
 (define (emit_cond_jmp code i off ctx)
   (define off32 (sign-extend off (bitvector 32)))
-  (define jmp_offset (bpf2a64_offset (bvadd i off32) i ctx))
+  (define jmp_offset (bpf2a64_offset i off32 ctx))
   (check_imm19 jmp_offset)
 
   (define jmp_cond
@@ -364,7 +372,7 @@
 
     ; JUMP off
     [((BPF_JMP BPF_JA))
-     (define jmp_offset (bpf2a64_offset (bvadd i off32) i ctx))
+     (define jmp_offset (bpf2a64_offset i off32 ctx))
      (check_imm26 jmp_offset)
      (emit (A64_B jmp_offset) ctx)]
 

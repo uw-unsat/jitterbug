@@ -54,11 +54,9 @@
 
 (define (bpf-to-target-pc ctx target-pc-base bpf-pc)
   (define offsets (context-offset ctx))
-  (define (prev-offset insn)
-   (if (bveq insn (bv 0 32)) (bv 0 32) (offsets (bvsub insn (bv 1 32)))))
   (bvadd
     target-pc-base
-    (bvmul (zero-extend (prev-offset bpf-pc) (bitvector 64)) (bv 4 64))))
+    (bvmul (zero-extend (offsets bpf-pc) (bitvector 64)) (bv 4 64))))
 
 (define (code-size vec)
   (* 4 (vector-length vec)))
