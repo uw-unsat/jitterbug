@@ -13,11 +13,8 @@
 
 (define (init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
-  (define ninsns
-    (if (equal? (bv 0 32) insn-idx)
-        (bv 0 32)
-        (offsets (bvsub insn-idx (bv 1 32)))))
-  (define epilogue-offset (offsets (bvsub1 program-length)))
+  (define ninsns (offsets insn-idx))
+  (define epilogue-offset (offsets program-length))
   (define ctx (context (vector) ninsns epilogue-offset offsets program-length))
   ctx)
 
