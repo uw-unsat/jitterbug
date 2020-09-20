@@ -314,9 +314,6 @@ namespace source
   constant result_of : STATE → option RESULT
   constant initial_state : CONTEXT → INPUT → STATE → Prop
 
-  axiom initial_inhabited :
-    ∀ (c : CONTEXT) (i : INPUT), ∃ (s : STATE), initial_state c i s
-
   def CODE : Type := @machine.CODE PC INSN
   noncomputable def step := machine.step pc_of step_insn result_of
   definition star := machine.star pc_of step_insn result_of
@@ -700,7 +697,7 @@ begin
   apply source_target_deterministic; assumption,
 end
 
-theorem bisimulation :
+theorem interpreter_equivalence :
   ∀ (ctx : CONTEXT) (code_S : source.CODE) (code_T : target.CODE)
     (oracle : NONDET) (σ_S : source.STATE) (σ_T : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
     source.wf ctx code_S →
@@ -708,45 +705,26 @@ theorem bisimulation :
     source.initial_state ctx i σ_S →
     target.initial_state ctx i σ_T →
 
-    ((∃ (σ_T' : target.STATE),
-      target.star oracle code_T σ_T σ_T' tr ∧
-      target.result_of σ_T' = some res)
-    ↔
-    (∃ (σ_S' : source.STATE),
+    ((∃ (σ_S' : source.STATE),
       source.star oracle code_S σ_S σ_S' tr ∧
-      source.result_of σ_S' = some res)) :=
+      source.result_of σ_S' = some res)
+    ↔
+    (∃ (σ_T' : target.STATE),
+      target.star oracle code_T σ_T σ_T' tr ∧
+      target.result_of σ_T' = some res ∧
+      target.arch_inv ctx σ_T σ_T')) :=
 begin
   intros,
   split; intros,
   { cases a_4,
     cases a_4_h,
+    apply forward_simulation; try{assumption},
+  },
+  { cases a_4,
+    cases a_4_h,
+    cases a_4_h_right,
     cases (backward_simulation ctx code_S code_T oracle σ_T a_4_w _ _ _ _ _ _ _ _ _ _); repeat{any_goals{assumption}},
     existsi w,
     tauto,
   },
-  { cases a_4,
-    cases a_4_h,
-    cases forward_simulation ctx oracle code_S _ _ tr i res (by assumption)
-      (by assumption) (by assumption) (by assumption) _ _ (by assumption)
-      (by assumption),
-    existsi w,
-    tauto,
-  },
-end
-
-theorem architectural_safety :
-  ∀ (ctx : CONTEXT) (oracle : NONDET) (code_S : source.CODE)
-    (code_T : target.CODE) (σ_T σ_T' : target.STATE) (i : INPUT) (tr : TRACE) (res : RESULT),
-    source.wf ctx code_S →
-    jit.emit ctx code_S = some code_T →
-    target.initial_state ctx i σ_T →
-    target.star oracle code_T σ_T σ_T' tr →
-    target.result_of σ_T' = some res →
-    target.arch_inv ctx σ_T σ_T' :=
-begin
-  intros,
-  cases (source.initial_inhabited ctx i) with init_S Sinitial,
-  cases (backward_simulation ctx code_S code_T oracle _ _ _ tr i res
-    (by assumption) (by assumption) (by assumption) a_3 a_4 Sinitial),
-  tauto,
 end
