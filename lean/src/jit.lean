@@ -63,7 +63,7 @@ section machine
       ∀ insn (s' : STATE) (tr : TRACE),
         code (pc_of s) = some insn →
         step_insn oracle insn s = (s', tr) →
-        (∀ (r : RESULT), ¬ final s r) →
+        (¬ ∃ (r : RESULT), final s r) →
         step s' tr
   -- Final states step to themselves.
   | step_final :
@@ -86,11 +86,11 @@ section machine
       rw S1_dostep at *,
       cases S2_dostep, by tauto,
     },
-    { specialize S1_notfinal S2_r,
-      by contradiction,
+    { exfalso, apply S1_notfinal,
+      existsi S2_r, by assumption,
     },
-    { specialize S2_notfinal S1_r,
-      by contradiction,
+    { exfalso, apply S2_notfinal,
+      existsi S1_r, by assumption,
     },
     { by tauto, },
   end
@@ -192,9 +192,9 @@ section machine
   begin
     intros _ _ _ _ h1 _ _ h2,
     cases h2,
-    specialize h2_a_2 r,
-    contradiction,
-    tauto,
+    exfalso, apply h2_a_2,
+    existsi r, by assumption,
+    cc,
   end
 
   lemma final_star :
@@ -222,8 +222,9 @@ section machine
     existsi res, by assumption,
     apply a_1_ih,
     cases a_1_a_1,
-    specialize a_1_a_1_a_2 res,
-    contradiction,
+    exfalso, apply a_1_a_1_a_2,
+    existsi res,
+    by assumption,
     by assumption,
   end
 
@@ -231,7 +232,7 @@ section machine
   lemma safe_self :
     ∀ (oracle : NONDET) (code : CODE) (s : STATE),
       safe oracle code s →
-      (∀ r, ¬ final s r) →
+      (¬ ∃ (r : RESULT), final s r) →
       ∃ (insn : INSN),
         code (pc_of s) = some insn :=
   begin
@@ -241,8 +242,7 @@ section machine
     cases a with insn a,
     by assumption,
     cases a with res res_final,
-    specialize a_1 res,
-    contradiction,
+    exfalso, apply a_1, existsi res, by assumption,
   end
 
   -- A safe state is still safe after one step.
