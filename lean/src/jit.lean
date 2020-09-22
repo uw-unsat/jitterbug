@@ -4,26 +4,27 @@ import tactic.tauto
 /-!
 This file contains the metatheory of JIT correctness.
 
-The main theorems are forward_simulation and backward_simulation, proved based
-on the following two sets of axioms.
+The main theorem is interpreter_equivalence, proved based on the following two sets of axioms.
 
-Two axioms are assumed to be correct (e.g., ensured by the Linux kernel):
+Three axioms are assumed to be correct (e.g., ensured by the Linux kernel):
 
-* wf_terminates: a program that passes the checker terminates.
+* checker_safety: a program that passes the checker terminates.
 
-* emit_correct: the output of the JIT contains the output of individual parts.
+* ctx_correctness: the JIT computes a correct JIT context for the source program
+
+* layout_consistency: the output of the JIT contains the output of individual parts.
 
 Three axioms about the correctness of individal parts of the JIT are expected
 to be proved separately in SMT:
 
-* prologue_correct: running the emitted prologue from the initial target state
-  reaches a target state that relates to the initial source state.
+* prologue_correct: running the emitted prologue from the initial target state reaches a target
+  state that relates to the initial source state.
 
-* per_insn_correct: running the emitted target code preserves the relation
-  between source and target states and produces the same trace.
+* per_insn_correct: running the emitted target code preserves the relation between source and
+  target states and produces the same trace.
 
-* epilogue_correct: running the emitted epilogue from a target state that
-  relates to the final source state reaches the final target state.
+* epilogue_correct: running the emitted epilogue from a target state that relates to the final
+  source state reaches the final target state.
 
 ## References
 
@@ -37,7 +38,7 @@ section machine
   parameters {CONTEXT EVENT NONDET INPUT RESULT PC STATE INSN : Type}
 
   -- A trace is a list of externally visible events.
-  def TRACE : Type := list EVENT
+  definition TRACE : Type := list EVENT
   instance : has_append TRACE := ⟨list.append⟩
 
   -- Get program counter of machine.
@@ -46,30 +47,33 @@ section machine
   -- Step a given instruction, producing new state and trace.
   parameter step_insn : NONDET → INSN → STATE → (STATE × TRACE)
 
-  -- Whether the state is an inital state
+  -- Whether the state is an inital state.
   parameter initial : STATE → INPUT → Prop
 
-  -- This mimics the final state.
+  -- Whether the state is a final state.
   parameter final : STATE → RESULT → Prop
 
   -- Code is a partial map from PC to instruction.  We intentionally avoid
   -- using a list and favor this more abstract representation.
-  def CODE : Type := PC → option INSN
+  definition CODE : Type := PC → option INSN
 
   inductive step (oracle : NONDET) (code : CODE) (s : STATE) : STATE → TRACE → Prop
+  -- Can take a step if there exists an instruction to execute and the state is not final.
   | step_one :
-      ∀ insn s' tr,
+      ∀ insn (s' : STATE) (tr : TRACE),
         code (pc_of s) = some insn →
         step_insn oracle insn s = (s', tr) →
-        (∀ r, ¬ final s r) →
+        (∀ (r : RESULT), ¬ final s r) →
         step s' tr
+  -- Final states step to themselves.
   | step_final :
-      ∀ r,
+      ∀ (r : RESULT),
         final s r →
         step s []
 
+  -- Step behaves like a function.
   lemma step_deterministic :
-    ∀ oracle code s s1' s2' tr1 tr2,
+    ∀ (oracle : NONDET) (code : CODE) (s s1' s2' : STATE) (tr1 tr2 : TRACE),
       step oracle code s s1' tr1 →
       step oracle code s s2' tr2 →
       (s1' = s2' ∧ tr1 = tr2) :=
@@ -104,7 +108,7 @@ section machine
 
   -- A safe state can always fetch an instruction from any reachable state,
   -- or it's the final state
-  def safe (oracle : NONDET) (code : CODE) (s1 : STATE) : Prop :=
+  definition safe (oracle : NONDET) (code : CODE) (s1 : STATE) : Prop :=
     ∀ s2 tr,
       star oracle code s1 s2 tr →
       (∃ insn, code (pc_of s2) = some insn) ∨ (∃ res, final s2 res)
@@ -140,7 +144,7 @@ section machine
   end
 
   -- c1 is a subset of c2 if any instruction c1 has is also in c2.
-  def subset (c1 c2 : CODE) : Prop :=
+  definition subset (c1 c2 : CODE) : Prop :=
     ∀ (idx : PC) (insn : INSN),
       c1 idx = some insn →
       c2 idx = some insn
@@ -308,46 +312,15 @@ section machine
     apply a_ih, assumption,
   end
 
-end machine
-end machine
-
--- Re-declare infix notation outside of machine scope.
-local infix ` <+ ` := machine.subset
-
-constants CONTEXT EVENT NONDET INPUT RESULT : Type
-
-def TRACE : Type := @machine.TRACE EVENT
-
-noncomputable instance : has_append TRACE := ⟨list.append⟩
-
--- This models the behavior of the source language.
-
-namespace source
-
-  constants INSN PC STATE : Type
-  constant pc_of : STATE → PC
-  constant step_insn : NONDET → INSN → STATE → (STATE × TRACE)
-  constant final : STATE → RESULT → Prop
-  constant initial : STATE → INPUT → Prop
-
-  def CODE : Type := @machine.CODE PC INSN
-  def step := machine.step pc_of step_insn final
-  definition star := machine.star pc_of step_insn final
-  definition safe := machine.safe pc_of step_insn final
-
-  -- This captures the guarantees of the checker: a well-formed program passes
-  -- the checker.
-  constant wf : CONTEXT → CODE → Prop
-
   -- Holds if the code always terminates
-  def always_terminates (code : source.CODE) : Prop :=
+  definition always_terminates (code : CODE) : Prop :=
     ∀ (oracle : NONDET) (s : STATE) (i : INPUT),
       initial s i →
       ∃ (s' : STATE) (tr : TRACE) (res : RESULT),
         star oracle code s s' tr ∧
         final s' res
 
-  -- Well-formed code from the initial state is safe.
+  -- A program which always terminates is same from the initial state.
   lemma always_terminates_safe :
     ∀ (s : STATE) (code : CODE) (i : INPUT),
       always_terminates code  →
@@ -365,6 +338,37 @@ namespace source
     apply machine.terminates_safe; assumption,
   end
 
+end machine
+end machine
+
+-- Re-declare infix notation outside of machine scope.
+local infix ` <+ ` := machine.subset
+
+constants CONTEXT EVENT NONDET INPUT RESULT : Type
+
+definition TRACE : Type := @machine.TRACE EVENT
+
+noncomputable instance : has_append TRACE := ⟨list.append⟩
+
+-- This models the behavior of the source language.
+
+namespace source
+
+  constants INSN PC STATE : Type
+  constant pc_of : STATE → PC
+  constant step_insn : NONDET → INSN → STATE → (STATE × TRACE)
+  constant final : STATE → RESULT → Prop
+  constant initial : STATE → INPUT → Prop
+
+  definition CODE : Type := @machine.CODE PC INSN
+  definition step := machine.step pc_of step_insn final
+  definition star := machine.star pc_of step_insn final
+  definition safe := machine.safe pc_of step_insn final
+  definition always_terminates := machine.always_terminates pc_of step_insn initial final
+
+  -- This captures whether a JIT context is well-formed for a particular source BPF program.
+  constant wf : CONTEXT → CODE → Prop
+
 end source
 
 -- This models the behavior of the target language.
@@ -377,16 +381,17 @@ namespace target
   constant final : STATE → RESULT → Prop
   constant initial : STATE → INPUT → Prop
 
-  def CODE : Type := @machine.CODE PC INSN
-  def step := machine.step pc_of step_insn final
-  def star := machine.star pc_of step_insn final
+  definition CODE : Type := @machine.CODE PC INSN
+  definition step := machine.step pc_of step_insn final
+  definition star := machine.star pc_of step_insn final
 
   -- Whether the architectural invariants hold for some state
   -- w.r.t an initial state
   constant arch_inv : STATE → STATE → Prop
 
+  -- The result of a final state is uniquely determined by the state.
   axiom result_deterministic :
-    ∀ s r1 r2,
+    ∀ (s : STATE) (r1 r2 : RESULT),
       final s r1 →
       final s r2 →
       r1 = r2
@@ -406,8 +411,7 @@ namespace jit
 
   constant compute_ctx : source.CODE → CONTEXT
 
-  -- Emit target code for an entire source program, including
-  -- epilogue and prologue.
+  -- Emit target code for an entire source program, including BPF checker, prologue, and epilogue.
   constant compile : source.CODE → option target.CODE
 
   -- If the JIT suceeds for an entire source program,
@@ -425,12 +429,18 @@ namespace jit
       jit.emit_prologue (compute_ctx code_S) code_S <+ code_T ∧
       jit.emit_epilogue (compute_ctx code_S) code_S <+ code_T
 
-  -- If you compile some code, then the ctx it uses is well-formed
+  -- If compile produces some code, then the JIT context it computes is well-formed
+  --
+  -- This is assumed to hold.
   axiom ctx_correctness :
     ∀ (code_S : source.CODE) (code_T : target.CODE),
       jit.compile code_S = some code_T →
       source.wf (compute_ctx code_S) code_S
 
+  -- If compile produces some code, then the source program was accepted by the BPF checker and
+  -- therefore always terminates.
+  --
+  -- This is assumed to hold.
   axiom checker_safety :
     ∀ (code_S : source.CODE) (code_T : target.CODE),
       jit.compile code_S = some code_T →
@@ -444,8 +454,8 @@ end jit
 constant related : CONTEXT → source.STATE → target.STATE → Prop
 notation s1 `~[`:50 ctx `]` s2:50 := related ctx s1 s2
 
--- Running the prologue from an initial state produces a target
--- state related to the initial source state (with no trace).
+-- Running the prologue from an initial state produces a target state related to the initial source
+-- state (with no trace).
 --
 -- This is proved in SMT.
 axiom prologue_correct :
@@ -458,9 +468,8 @@ axiom prologue_correct :
       s1 ~[ctx] t2 ∧
       target.arch_inv t1 t2
 
--- If the source state has reached a result, then executing
--- the epilogue in a related target state reaches a state
--- with the same result (and no trace).
+-- If the source state has reached a result, then executing the epilogue in a related target state
+-- reaches a state with the same result (and no trace).
 --
 -- This is proved in SMT.
 axiom epilogue_correct :
@@ -474,10 +483,9 @@ axiom epilogue_correct :
       target.final t2 res ∧
       target.arch_inv init_t t2
 
--- If the JIT produces some code for one source instruction,
--- then starting from related source and target states,
--- stepping the source instruction is related to some
--- state reachable from the target state, for the jited code.
+-- If the JIT produces some code for one source instruction, then starting from related source and
+-- target states, stepping the source instruction is related to some state reachable from the
+-- target state, for the jited code.
 --
 -- This is proved in SMT.
 axiom per_insn_correct :
@@ -596,7 +604,7 @@ begin
   {
     cases hprologue_right,
     apply star_src_correct; try{assumption},
-    apply source.always_terminates_safe; assumption,
+    apply machine.always_terminates_safe; assumption,
   },
   cases hstar with t3 hstar,
   cases hstar with hstar_left hstar_right,
@@ -736,7 +744,12 @@ begin
   cases x with res' H,
   existsi s',
   cases H,
-  suffices : tr' = tr ∧ res' = res ∧ target.arch_inv σ_T σ_T', by cc,
+  suffices : tr' = tr ∧ res' = res ∧ target.arch_inv σ_T σ_T',
+  { cases this with left right, rw left at *,
+    cases right with left right, rw left at *, rw right at *,
+    repeat{split <|> assumption},
+  },
+
   apply source_target_deterministic; assumption,
 end
 
