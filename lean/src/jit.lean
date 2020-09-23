@@ -360,6 +360,8 @@ namespace source
   constant final : STATE → RESULT → Prop
   constant initial : STATE → INPUT → Prop
 
+  axiom initial_inhabited : ∀ (i : INPUT), ∃ (s : STATE), initial s i
+
   definition CODE : Type := @machine.CODE PC INSN
   definition step := machine.step pc_of step_insn final
   definition star := machine.star pc_of step_insn final
@@ -660,13 +662,17 @@ lemma target_deterministic :
     ∀ (s2' : target.STATE) (tr' : TRACE) (res' : RESULT),
       target.star oracle code s1 s2' tr' →
       target.final s2' res' →
-      (tr = tr' ∧ s2 = s2') :=
+      (tr = tr' ∧ s2 = s2' ∧ res = res') :=
 begin
   intros _ _ _ _ _ _ h1 h2,
   induction h1 with s' s' s'' s''' tr1 tr2 h1 h3 IH,
   { intros _ _ _ h4 h5,
     have : tr' = [] ∧ s2' = s',
       by {apply machine.final_star, from h2, all_goals{assumption}},
+    cases this,
+    rw this_right at *,
+    rw this_left at *,
+    have : res = res', apply target.result_deterministic; try{assumption},
     cc,
   },
   { intros _ _ _ h4 h5,
@@ -680,7 +686,7 @@ begin
     { cases (machine.step_deterministic _ _ _ _ code _ _ _ _ _ h4_a_1 h1),
       rw left at *,
       rw right at *,
-      suffices : tr2 = h4_tr₂ ∧ s''' = s2', by tauto,
+      suffices : tr2 = h4_tr₂ ∧ s''' = s2' ∧ res = res', by tauto,
       apply IH; tauto,
     } }
 end
@@ -715,11 +721,13 @@ begin
     split; try{assumption},
     apply target.result_deterministic; by assumption,
   },
-  apply target_deterministic; assumption,
+
+  have : tr = tr' ∧ T = σ_T' ∧ res = res', apply target_deterministic; assumption,
+  cc,
 end
 
 -- The behavior of the jited target code is allowed by the source program.
-theorem backward_simulation :
+lemma backward_simulation :
   ∀ (code_S : source.CODE) (code_T : target.CODE)
     (oracle : NONDET) (σ_T σ_T' : target.STATE) (σ_S : source.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
     target.initial σ_T i →
@@ -753,13 +761,87 @@ begin
   apply source_target_deterministic; assumption,
 end
 
-theorem interpreter_equivalence :
+theorem target_termination :
+  ∀ (code_S : source.CODE) (code_T : target.CODE) (σ_T : target.STATE)
+    (oracle : NONDET) (i : INPUT),
+    jit.compile code_S = some code_T →
+    target.initial σ_T i →
+    ∃ (σ_T' : target.STATE) (tr : TRACE) (res : RESULT),
+      target.star oracle code_T σ_T σ_T' tr ∧ target.final σ_T' res :=
+begin
+  intros _ _ _ _ _ comp tinit,
+  have sterm : source.always_terminates code_S,
+  apply jit.checker_safety; assumption,
+  dsimp [source.always_terminates, machine.always_terminates] at *,
+  specialize sterm oracle,
+  cases (source.initial_inhabited i) with σ_S sinit,
+  specialize sterm σ_S i sinit,
+  cases sterm with σ_S' sterm,
+  cases sterm with tr sterm,
+  cases sterm with res sterm,
+  cases sterm with sstar sfinal,
+  cases (forward_simulation oracle code_S σ_S σ_S' tr i res sinit sstar sfinal σ_T code_T tinit comp)
+    with σ_T' forward,
+  existsi σ_T',
+  existsi tr,
+  existsi res,
+  cc,
+end
+
+theorem arch_safety :
+  ∀ (code_S : source.CODE) (code_T : target.CODE) (σ_T σ_T' : target.STATE)
+    (tr : TRACE) (res : RESULT) (oracle : NONDET) (i : INPUT),
+    jit.compile code_S = some code_T →
+    target.initial σ_T i →
+    target.star oracle code_T σ_T σ_T' tr →
+    target.final σ_T' res →
+    target.arch_inv σ_T σ_T' :=
+begin
+  intros _ _ _ _ _ _ _ _ comp tinit tstar tfinal,
+
+  have sterm : source.always_terminates code_S,
+  apply jit.checker_safety; assumption,
+  dsimp [source.always_terminates, machine.always_terminates] at *,
+  specialize sterm oracle,
+  cases (source.initial_inhabited i) with σ_S sinit,
+  specialize sterm σ_S i sinit,
+  cases sterm with σ_S' sterm,
+  cases sterm with tr2 sterm,
+  cases sterm with res2 sterm,
+  cases sterm with sstar sfinal,
+  cases (forward_simulation oracle code_S σ_S σ_S' tr2 i res2 sinit sstar sfinal σ_T code_T tinit comp)
+    with σ_T2' forward,
+
+  cases forward,
+  cases forward_right,
+  have : tr = tr2 ∧ σ_T' = σ_T2' ∧ res = res2, apply target_deterministic; assumption,
+  cc,
+end
+
+theorem trace_equivalence :
+  ∀ (code_S : source.CODE) (code_T : target.CODE)
+    (oracle : NONDET) (σ_S : source.STATE) (σ_T σ_T' : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
+    jit.compile code_S = some code_T →
+    source.initial σ_S i →
+    target.initial σ_T i →
+    target.star oracle code_T σ_T σ_T' tr →
+    target.final σ_T' res →
+    ∃ (σ_S' : source.STATE),
+      source.star oracle code_S σ_S σ_S' tr →
+      source.final σ_S' res :=
+begin
+  intros,
+  cases (backward_simulation code_S code_T oracle σ_T σ_T' σ_S tr i res _ _ _ _ _); try{assumption},
+  existsi w,
+  cc,
+end
+
+lemma bisimulation :
   ∀ (code_S : source.CODE) (code_T : target.CODE)
     (oracle : NONDET) (σ_S : source.STATE) (σ_T : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
     jit.compile code_S = some code_T →
     source.initial σ_S i →
     target.initial σ_T i →
-
     ((∃ (σ_S' : source.STATE),
       source.star oracle code_S σ_S σ_S' tr ∧
       source.final σ_S' res)
@@ -779,44 +861,4 @@ begin
     existsi w,
     tauto,
   },
-end
-
-theorem weaker_spec :
-  ∀ (code_S : source.CODE) (code_T : target.CODE)
-    (oracle : NONDET) (σ_S : source.STATE) (σ_T : target.STATE) (i : INPUT),
-    jit.compile code_S = some code_T →
-    source.initial σ_S i →
-    target.initial σ_T i →
-
-    (∃ (σ_S' : source.STATE) (σ_T' : target.STATE) (tr : TRACE) (res : RESULT),
-      source.star oracle code_S σ_S σ_S' tr ∧
-      source.final σ_S' res ∧
-      target.star oracle code_T σ_T σ_T' tr ∧
-      target.final σ_T' res ∧
-      target.arch_inv σ_T σ_T') :=
-begin
-  intros _ _ _ _ _ _ comp inits initt,
-  have terms : source.always_terminates code_S,
-  apply jit.checker_safety; by assumption,
-
-  dsimp [source.always_terminates, machine.always_terminates] at *,
-  specialize terms oracle σ_S i inits,
-
-  cases terms with σ_S' terms,
-  cases terms with tr terms,
-  cases terms with res terms,
-  cases terms with stars finals,
-
-  cases (interpreter_equivalence code_S code_T oracle σ_S σ_T tr i res comp inits initt) with forward backward,
-
-  have this : (∃ (σ_S' : source.STATE), source.star oracle code_S σ_S σ_S' tr ∧ source.final σ_S' res),
-  existsi σ_S', split; assumption,
-
-  specialize forward this,
-  cases forward with σ_T' forward,
-  cases forward with start forward,
-  cases forward with finalt forward,
-
-  existsi σ_S', existsi σ_T', existsi tr, existsi res,
-  repeat {split <|> assumption},
 end
