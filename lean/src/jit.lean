@@ -761,33 +761,6 @@ begin
   apply source_target_deterministic; assumption,
 end
 
-theorem target_termination :
-  ∀ (code_S : source.CODE) (code_T : target.CODE) (σ_T : target.STATE)
-    (oracle : NONDET) (i : INPUT),
-    jit.compile code_S = some code_T →
-    target.initial σ_T i →
-    ∃ (σ_T' : target.STATE) (tr : TRACE) (res : RESULT),
-      target.star oracle code_T σ_T σ_T' tr ∧ target.final σ_T' res :=
-begin
-  intros _ _ _ _ _ comp tinit,
-  have sterm : source.always_terminates code_S,
-  apply jit.checker_safety; assumption,
-  dsimp [source.always_terminates, machine.always_terminates] at *,
-  specialize sterm oracle,
-  cases (source.initial_inhabited i) with σ_S sinit,
-  specialize sterm σ_S i sinit,
-  cases sterm with σ_S' sterm,
-  cases sterm with tr sterm,
-  cases sterm with res sterm,
-  cases sterm with sstar sfinal,
-  cases (forward_simulation oracle code_S σ_S σ_S' tr i res sinit sstar sfinal σ_T code_T tinit comp)
-    with σ_T' forward,
-  existsi σ_T',
-  existsi tr,
-  existsi res,
-  cc,
-end
-
 theorem arch_safety :
   ∀ (code_S : source.CODE) (code_T : target.CODE) (σ_T σ_T' : target.STATE)
     (tr : TRACE) (res : RESULT) (oracle : NONDET) (i : INPUT),
@@ -818,25 +791,7 @@ begin
   cc,
 end
 
-theorem trace_equivalence :
-  ∀ (code_S : source.CODE) (code_T : target.CODE)
-    (oracle : NONDET) (σ_S : source.STATE) (σ_T σ_T' : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
-    jit.compile code_S = some code_T →
-    source.initial σ_S i →
-    target.initial σ_T i →
-    target.star oracle code_T σ_T σ_T' tr →
-    target.final σ_T' res →
-    ∃ (σ_S' : source.STATE),
-      source.star oracle code_S σ_S σ_S' tr →
-      source.final σ_S' res :=
-begin
-  intros,
-  cases (backward_simulation code_S code_T oracle σ_T σ_T' σ_S tr i res _ _ _ _ _); try{assumption},
-  existsi w,
-  cc,
-end
-
-lemma bisimulation :
+theorem interpreter_equivalence :
   ∀ (code_S : source.CODE) (code_T : target.CODE)
     (oracle : NONDET) (σ_S : source.STATE) (σ_T : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
     jit.compile code_S = some code_T →
@@ -848,17 +803,24 @@ lemma bisimulation :
     ↔
     (∃ (σ_T' : target.STATE),
       target.star oracle code_T σ_T σ_T' tr ∧
-      target.final σ_T' res ∧
-      target.arch_inv σ_T σ_T')) :=
+      target.final σ_T' res)) :=
 begin
   intros,
   split; intros,
-  { cases a_3, cases a_3_h,
-    apply forward_simulation; try{assumption},
+  { cases a_3 with σ_S' a,
+    cases a with sstar sfinal,
+    cases (forward_simulation oracle code_S σ_S σ_S' tr i res a_1 sstar sfinal σ_T code_T a_2 a)
+      with σ_T' a,
+    cases a with tstar a,
+    cases a with tfinal tinv,
+    existsi σ_T', cc,
   },
-  { cases a_3, cases a_3_h, cases a_3_h_right,
-    cases (backward_simulation code_S code_T oracle σ_T a_3_w _ _ _ _ _ _ _ _ _); repeat{any_goals{assumption}},
-    existsi w,
-    tauto,
+  { cases a_3 with σ_T' a,
+    cases a with tstar tfinal,
+    cases (backward_simulation code_S code_T oracle σ_T σ_T' _ _ _ _ _ _ _ _ _) with σ_S' a; repeat{any_goals{assumption}},
+    cases a with sstar a,
+    cases a with sfinal inv,
+    existsi σ_S',
+    cc,
   },
 end
