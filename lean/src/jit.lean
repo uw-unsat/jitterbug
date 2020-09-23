@@ -780,3 +780,43 @@ begin
     tauto,
   },
 end
+
+theorem weaker_spec :
+  ∀ (code_S : source.CODE) (code_T : target.CODE)
+    (oracle : NONDET) (σ_S : source.STATE) (σ_T : target.STATE) (i : INPUT),
+    jit.compile code_S = some code_T →
+    source.initial σ_S i →
+    target.initial σ_T i →
+
+    (∃ (σ_S' : source.STATE) (σ_T' : target.STATE) (tr : TRACE) (res : RESULT),
+      source.star oracle code_S σ_S σ_S' tr ∧
+      source.final σ_S' res ∧
+      target.star oracle code_T σ_T σ_T' tr ∧
+      target.final σ_T' res ∧
+      target.arch_inv σ_T σ_T') :=
+begin
+  intros _ _ _ _ _ _ comp inits initt,
+  have terms : source.always_terminates code_S,
+  apply jit.checker_safety; by assumption,
+
+  dsimp [source.always_terminates, machine.always_terminates] at *,
+  specialize terms oracle σ_S i inits,
+
+  cases terms with σ_S' terms,
+  cases terms with tr terms,
+  cases terms with res terms,
+  cases terms with stars finals,
+
+  cases (interpreter_equivalence code_S code_T oracle σ_S σ_T tr i res comp inits initt) with forward backward,
+
+  have this : (∃ (σ_S' : source.STATE), source.star oracle code_S σ_S σ_S' tr ∧ source.final σ_S' res),
+  existsi σ_S', split; assumption,
+
+  specialize forward this,
+  cases forward with σ_T' forward,
+  cases forward with start forward,
+  cases forward with finalt forward,
+
+  existsi σ_S', existsi σ_T', existsi tr, existsi res,
+  repeat {split <|> assumption},
+end
