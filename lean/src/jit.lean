@@ -45,7 +45,7 @@ section machine
   parameter pc_of : STATE → PC
 
   -- Step a given instruction, producing new state and trace.
-  parameter step_insn : NONDET → INSN → STATE → (STATE × TRACE)
+  parameter step_insn : NONDET → INSN → STATE → option (STATE × TRACE)
 
   -- Whether the state is an inital state.
   parameter initial : STATE → INPUT → Prop
@@ -62,7 +62,7 @@ section machine
   | step_one :
       ∀ insn (s' : STATE) (tr : TRACE),
         code (pc_of s) = some insn →
-        step_insn oracle insn s = (s', tr) →
+        step_insn oracle insn s = some (s', tr) →
         (¬ ∃ (r : RESULT), final s r) →
         step s' tr
   -- Final states step to themselves.
@@ -356,7 +356,7 @@ namespace source
 
   constants INSN PC STATE : Type
   constant pc_of : STATE → PC
-  constant step_insn : NONDET → INSN → STATE → (STATE × TRACE)
+  constant step_insn : NONDET → INSN → STATE → option (STATE × TRACE)
   constant final : STATE → RESULT → Prop
   constant initial : STATE → INPUT → Prop
 
@@ -377,7 +377,7 @@ namespace target
 
   constants INSN PC STATE : Type
   constant pc_of : STATE → PC
-  constant step_insn : NONDET → INSN → STATE → (STATE × TRACE)
+  constant step_insn : NONDET → INSN → STATE → option (STATE × TRACE)
   constant final : STATE → RESULT → Prop
   constant initial : STATE → INPUT → Prop
 
