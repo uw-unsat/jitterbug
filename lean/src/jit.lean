@@ -35,7 +35,7 @@ to be proved separately in SMT:
 namespace machine
 section machine
 
-  parameters {CONTEXT EVENT NONDET INPUT RESULT PC STATE INSN : Type}
+  parameters {CONTEXT EVENT ORACLE INPUT OUTPUT PC STATE INSN : Type}
 
   -- A trace is a list of externally visible events.
   definition TRACE : Type := list EVENT
@@ -45,37 +45,37 @@ section machine
   parameter pc_of : STATE → PC
 
   -- Step a given instruction, producing new state and trace.
-  parameter step_insn : NONDET → INSN → STATE → option (STATE × TRACE)
+  parameter step_insn : ORACLE → INSN → STATE → option (STATE × TRACE)
 
   -- Whether the state is an inital state.
   parameter initial : STATE → INPUT → Prop
 
   -- Whether the state is a final state.
-  parameter final : STATE → RESULT → Prop
+  parameter final : STATE → OUTPUT → Prop
 
   -- Code is a partial map from PC to instruction.  We intentionally avoid
   -- using a list and favor this more abstract representation.
   definition CODE : Type := PC → option INSN
 
-  inductive step (oracle : NONDET) (code : CODE) (s : STATE) : STATE → TRACE → Prop
+  inductive step (nd : ORACLE) (code : CODE) (σ : STATE) : STATE → TRACE → Prop
   -- Can take a step if there exists an instruction to execute and the state is not final.
   | step_one :
-      ∀ insn (s' : STATE) (tr : TRACE),
-        code (pc_of s) = some insn →
-        step_insn oracle insn s = some (s', tr) →
-        (¬ ∃ (r : RESULT), final s r) →
-        step s' tr
+      ∀ (insn : INSN) (σ' : STATE) (tr : TRACE),
+        code (pc_of σ) = some insn →
+        step_insn nd insn σ = some (σ', tr) →
+        (¬ ∃ (r : OUTPUT), final σ r) →
+        step σ' tr
   -- Final states step to themselves.
   | step_final :
-      ∀ (r : RESULT),
-        final s r →
-        step s []
+      ∀ (o : OUTPUT),
+        final σ o →
+        step σ []
 
   -- Step behaves like a function.
   lemma step_deterministic :
-    ∀ (oracle : NONDET) (code : CODE) (s s1' s2' : STATE) (tr1 tr2 : TRACE),
-      step oracle code s s1' tr1 →
-      step oracle code s s2' tr2 →
+    ∀ (nd : ORACLE) (code : CODE) (s s1' s2' : STATE) (tr1 tr2 : TRACE),
+      step nd code s s1' tr1 →
+      step nd code s s2' tr2 →
       (s1' = s2' ∧ tr1 = tr2) :=
   begin
     intros _ _ _ _ _ _ _ S1 S2,
@@ -96,28 +96,28 @@ section machine
   end
 
   -- A standard way to define reachable states.
-  inductive star (oracle : NONDET) (code : CODE) : STATE → STATE → TRACE → Prop
+  inductive star (nd : ORACLE) (code : CODE) : STATE → STATE → TRACE → Prop
   | refl :
     ∀ (a : STATE),
       star a a []
   | step :
     ∀ (a b c : STATE) (tr₁ tr₂ : TRACE),
-      step oracle code a b tr₁ →
+      step nd code a b tr₁ →
       star b c tr₂ →
       star a c (tr₁ ++ tr₂)
 
   -- A safe state can always fetch an instruction from any reachable state,
   -- or it's the final state
-  definition safe (oracle : NONDET) (code : CODE) (s1 : STATE) : Prop :=
-    ∀ s2 tr,
-      star oracle code s1 s2 tr →
-      (∃ insn, code (pc_of s2) = some insn) ∨ (∃ res, final s2 res)
+  definition safe (nd : ORACLE) (code : CODE) (σ : STATE) : Prop :=
+    ∀ (σ' : STATE) (tr : TRACE),
+      star nd code σ σ' tr →
+      (∃ (insn : INSN), code (pc_of σ') = some insn) ∨ (∃ (o : OUTPUT), final σ' o)
 
   -- If you can take one step, you can show star.
   lemma star_one :
-    ∀ (oracle : NONDET) (code : CODE) (a b : STATE) (tr : TRACE),
-      step oracle code a b tr →
-      star oracle code a b tr :=
+    ∀ (nd : ORACLE) (code : CODE) (a b : STATE) (tr : TRACE),
+      step nd code a b tr →
+      star nd code a b tr :=
   begin
     intros,
     rw ← list.append_nil tr,
@@ -128,13 +128,13 @@ section machine
 
   -- Star is transitive for fixed code and appending traces.
   lemma star_trans :
-    ∀ (oracle : NONDET) (code : CODE) (a b : STATE) (tr₁ : TRACE),
-      star oracle code a b tr₁ →
+    ∀ (nd : ORACLE) (code : CODE) (a b : STATE) (tr₁ : TRACE),
+      star nd code a b tr₁ →
       ∀ (c : STATE) (tr₂ : TRACE),
-        star oracle code b c tr₂ →
-        star oracle code a c (tr₁ ++ tr₂) :=
+        star nd code b c tr₂ →
+        star nd code a c (tr₁ ++ tr₂) :=
   begin
-    intros oracle code _ _ _ Hab,
+    intros nd code _ _ _ Hab,
     induction Hab with _ _ _ _ _ _ _ _ Hab_ih; intros; simp,
     { assumption },
     { constructor,
@@ -151,10 +151,10 @@ section machine
   local infix ` <+ ` := subset
 
   lemma step_subset :
-    ∀ (oracle : NONDET) (code₁ code₂ : CODE) (s1 s2 : STATE) (tr : TRACE),
-      step oracle code₁ s1 s2 tr →
+    ∀ (nd : ORACLE) (code₁ code₂ : CODE) (s1 s2 : STATE) (tr : TRACE),
+      step nd code₁ s1 s2 tr →
       code₁ <+ code₂ →
-      step oracle code₂ s1 s2 tr :=
+      step nd code₂ s1 s2 tr :=
   begin
     intros _ _ _ _ _ _ H1 H2,
     cases H1,
@@ -170,10 +170,10 @@ section machine
   -- If you can star given some code, you can always
   -- add more code and preserve star.
   lemma star_subset :
-    ∀ (oracle : NONDET) (code₁ code₂ : CODE) (s1 s2 : STATE) (tr : TRACE),
-      star oracle code₁ s1 s2 tr →
+    ∀ (nd : ORACLE) (code₁ code₂ : CODE) (s1 s2 : STATE) (tr : TRACE),
+      star nd code₁ s1 s2 tr →
       code₁ <+ code₂ →
-      star oracle code₂ s1 s2 tr :=
+      star nd code₂ s1 s2 tr :=
   begin
     intros _ _ _ _ _ _ H1 _,
     induction H1,
@@ -184,25 +184,25 @@ section machine
   end
 
   lemma final_step :
-    ∀ (oracle : NONDET) (s : STATE) (c : CODE) (r : RESULT),
-      final s r →
+    ∀ (nd : ORACLE) (s : STATE) (c : CODE) (o : OUTPUT),
+      final s o →
       ∀ (s' : STATE) (tr : TRACE),
-        step oracle c s s' tr →
+        step nd c s s' tr →
         tr = [] ∧ s' = s :=
   begin
     intros _ _ _ _ h1 _ _ h2,
     cases h2,
     exfalso, apply h2_a_2,
-    existsi r, by assumption,
+    existsi o, by assumption,
     cc,
   end
 
   lemma final_star :
-    ∀ (oracle : NONDET) (s : STATE) (c : CODE) (r : RESULT),
-      final s r →
+    ∀ (nd : ORACLE) (s : STATE) (c : CODE) (o : OUTPUT),
+      final s o →
       ∀ (s' : STATE) (tr : TRACE),
-        star oracle c s s' tr →
-        tr = [] ∧ s' = s :=
+        star nd c s s' tr →
+        (tr = [] ∧ s' = s) :=
   begin
     intros _ _ _ _ h1 _ _ h2,
     induction h2 with s2 s1 s2 s3 tr1 tr2 h3 h4 IH, cc,
@@ -213,26 +213,26 @@ section machine
 
   -- A final state is always safe.
   lemma final_safe :
-    ∀ (oracle : NONDET) (code : CODE) (s1 : STATE) (res : RESULT),
-      final s1 res →
-      safe oracle code s1 :=
+    ∀ (nd : ORACLE) (code : CODE) (s : STATE) (o : OUTPUT),
+      final s o →
+      safe nd code s :=
   begin
     dsimp [safe, machine.safe], intros, right,
     induction a_1,
-    existsi res, by assumption,
+    existsi o, by assumption,
     apply a_1_ih,
     cases a_1_a_1,
     exfalso, apply a_1_a_1_a_2,
-    existsi res,
+    existsi o,
     by assumption,
     by assumption,
   end
 
   -- A safe state can always take a step if it's not final.
   lemma safe_self :
-    ∀ (oracle : NONDET) (code : CODE) (s : STATE),
-      safe oracle code s →
-      (¬ ∃ (r : RESULT), final s r) →
+    ∀ (nd : ORACLE) (code : CODE) (s : STATE),
+      safe nd code s →
+      (¬ ∃ (o : OUTPUT), final s o) →
       ∃ (insn : INSN),
         code (pc_of s) = some insn :=
   begin
@@ -247,10 +247,10 @@ section machine
 
   -- A safe state is still safe after one step.
   lemma safe_step :
-    ∀ (oracle : NONDET) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
-      safe oracle code s₁ →
-      step oracle code s₁ s₂ tr →
-      safe oracle code s₂ :=
+    ∀ (nd : ORACLE) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
+      safe nd code s₁ →
+      step nd code s₁ s₂ tr →
+      safe nd code s₂ :=
   begin
     intros _ _ _ _ _ H1 _,
     simp [safe] at *,
@@ -262,10 +262,10 @@ section machine
 
   -- Safety is preserved across an arbitrary number of steps.
   lemma safe_star :
-    ∀ (oracle : NONDET) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
-      safe oracle code s₁ →
-      star oracle code s₁ s₂ tr →
-      safe oracle code s₂ :=
+    ∀ (nd : ORACLE) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
+      safe nd code s₁ →
+      star nd code s₁ s₂ tr →
+      safe nd code s₂ :=
   begin
     intros,
     induction a_1, by assumption,
@@ -276,17 +276,17 @@ section machine
   -- If a state is safe, and it was obtained by taking a step,
   -- then the state it stepped from is also safe.
   lemma safe_step_backwards :
-    ∀ (oracle : NONDET) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
-      safe oracle code s₂ →
-      step oracle code s₁ s₂ tr →
-      safe oracle code s₁ :=
+    ∀ (nd : ORACLE) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE),
+      safe nd code s₂ →
+      step nd code s₁ s₂ tr →
+      safe nd code s₁ :=
   begin
     intros,
     simp [safe] at *, intros,
     cases a_2,
     { cases a_1,
       left, existsi a_1_insn, by assumption,
-      right, existsi a_1_r, by assumption,
+      right, existsi a_1_o, by assumption,
     },
     { apply a,
       suffices h : a_2_b = s₂,
@@ -300,10 +300,10 @@ section machine
 
   -- A state that eventually terminates is always safe.
   lemma terminates_safe :
-    ∀ oracle code s1 s2 tr res,
-      star oracle code s1 s2 tr →
-      final s2 res →
-      safe oracle code s1 :=
+    ∀ (nd : ORACLE) (code : CODE) (s₁ s₂ : STATE) (tr : TRACE) (o : OUTPUT),
+      star nd code s₁ s₂ tr →
+      final s₂ o →
+      safe nd code s₁ :=
   begin
     intros,
     induction a,
@@ -314,23 +314,23 @@ section machine
 
   -- Holds if the code always terminates
   definition always_terminates (code : CODE) : Prop :=
-    ∀ (oracle : NONDET) (s : STATE) (i : INPUT),
+    ∀ (nd : ORACLE) (s : STATE) (i : INPUT),
       initial s i →
-      ∃ (s' : STATE) (tr : TRACE) (res : RESULT),
-        star oracle code s s' tr ∧
-        final s' res
+      ∃ (s' : STATE) (tr : TRACE) (o : OUTPUT),
+        star nd code s s' tr ∧
+        final s' o
 
   -- A program which always terminates is same from the initial state.
   lemma always_terminates_safe :
     ∀ (s : STATE) (code : CODE) (i : INPUT),
       always_terminates code  →
-      ∀ (oracle : NONDET),
+      ∀ (nd : ORACLE),
         initial s i →
-        safe oracle code s :=
+        safe nd code s :=
   begin
     intros,
     dsimp [always_terminates] at *,
-    specialize a oracle s i a_1,
+    specialize a nd s i a_1,
     cases a,
     cases a_h,
     cases a_h_h,
@@ -344,7 +344,7 @@ end machine
 -- Re-declare infix notation outside of machine scope.
 local infix ` <+ ` := machine.subset
 
-constants CONTEXT EVENT NONDET INPUT RESULT : Type
+constants CONTEXT EVENT ORACLE INPUT OUTPUT : Type
 
 definition TRACE : Type := @machine.TRACE EVENT
 
@@ -356,8 +356,8 @@ namespace source
 
   constants INSN PC STATE : Type
   constant pc_of : STATE → PC
-  constant step_insn : NONDET → INSN → STATE → option (STATE × TRACE)
-  constant final : STATE → RESULT → Prop
+  constant step_insn : ORACLE → INSN → STATE → option (STATE × TRACE)
+  constant final : STATE → OUTPUT → Prop
   constant initial : STATE → INPUT → Prop
 
   axiom initial_inhabited : ∀ (i : INPUT), ∃ (s : STATE), initial s i
@@ -366,7 +366,8 @@ namespace source
   definition step := machine.step pc_of step_insn final
   definition star := machine.star pc_of step_insn final
   definition safe := machine.safe pc_of step_insn final
-  definition always_terminates := machine.always_terminates pc_of step_insn initial final
+
+  @[simp] definition always_terminates := machine.always_terminates pc_of step_insn initial final
 
   -- This captures whether a JIT context is well-formed for a particular source BPF program.
   constant wf : CONTEXT → CODE → Prop
@@ -379,24 +380,24 @@ namespace target
 
   constants INSN PC STATE : Type
   constant pc_of : STATE → PC
-  constant step_insn : NONDET → INSN → STATE → option (STATE × TRACE)
-  constant final : STATE → RESULT → Prop
+  constant step_insn : ORACLE → INSN → STATE → option (STATE × TRACE)
+  constant final : STATE → OUTPUT → Prop
   constant initial : STATE → INPUT → Prop
 
   definition CODE : Type := @machine.CODE PC INSN
   definition step := machine.step pc_of step_insn final
-  definition star := machine.star pc_of step_insn final
+  @[reducible] definition star := machine.star pc_of step_insn final
 
   -- Whether the architectural invariants hold for some state
   -- w.r.t an initial state
   constant arch_inv : STATE → STATE → Prop
 
-  -- The result of a final state is uniquely determined by the state.
-  axiom result_deterministic :
-    ∀ (s : STATE) (r1 r2 : RESULT),
-      final s r1 →
-      final s r2 →
-      r1 = r2
+  -- The output of a final state is uniquely determined by the state.
+  axiom output_deterministic :
+    ∀ (s : STATE) (o₁ o₂ : OUTPUT),
+      final s o₁ →
+      final s o₂ →
+      o₁ = o₂
 
 end target
 
@@ -426,8 +427,8 @@ namespace jit
       jit.compile code_S = some code_T →
       (∀ (i : source.PC) (insn : source.INSN),
         code_S i = some insn →
-        ∃ (f_T : target.CODE),
-          jit.emit_insn (compute_ctx code_S) code_S i = some f_T ∧ f_T <+ code_T) ∧
+        ∃ (frag_T : target.CODE),
+          jit.emit_insn (compute_ctx code_S) code_S i = some frag_T ∧ frag_T <+ code_T) ∧
       jit.emit_prologue (compute_ctx code_S) code_S <+ code_T ∧
       jit.emit_epilogue (compute_ctx code_S) code_S <+ code_T
 
@@ -461,29 +462,31 @@ notation s1 `~[`:50 ctx `]` s2:50 := related ctx s1 s2
 --
 -- This is proved in SMT.
 axiom prologue_correct :
-  ∀ (oracle : NONDET) (ctx : CONTEXT) (t1 : target.STATE) (s1 : source.STATE) (i : INPUT) (code_S : source.CODE),
-    source.wf ctx code_S →
-    target.initial t1 i →
-    source.initial s1 i →
-    ∃ (t2 : target.STATE),
-      target.star oracle (jit.emit_prologue ctx code_S) t1 t2 [] ∧
-      s1 ~[ctx] t2 ∧
-      target.arch_inv t1 t2
+  ∀ (nd : ORACLE) (ctx : CONTEXT) (σ_T : target.STATE) (σ_S : source.STATE) (i : INPUT)
+    (code_S : source.CODE),
+      source.wf ctx code_S →
+      target.initial σ_T i →
+      source.initial σ_S i →
+      ∃ (σ_T' : target.STATE),
+        target.star nd (jit.emit_prologue ctx code_S) σ_T σ_T' [] ∧
+        σ_S ~[ctx] σ_T' ∧
+        target.arch_inv σ_T σ_T'
 
--- If the source state has reached a result, then executing the epilogue in a related target state
--- reaches a state with the same result (and no trace).
+-- If the source state has reached a OUTPUT, then executing the epilogue in a related target state
+-- reaches a state with the same OUTPUT (and no trace).
 --
 -- This is proved in SMT.
 axiom epilogue_correct :
-  ∀ (oracle : NONDET) (ctx : CONTEXT) (code_S : source.CODE) (s1 : source.STATE) (init_t t1 : target.STATE) (res : RESULT),
+  ∀ (nd : ORACLE) (ctx : CONTEXT) (code_S : source.CODE) (σ_S : source.STATE)
+    (init_T σ_T : target.STATE) (o : OUTPUT),
     source.wf ctx code_S →
-    s1 ~[ctx] t1 →
-    target.arch_inv init_t t1 →
-    source.final s1 res →
-    ∃ (t2 : target.STATE),
-      target.star oracle (jit.emit_epilogue ctx code_S) t1 t2 [] ∧
-      target.final t2 res ∧
-      target.arch_inv init_t t2
+    σ_S ~[ctx] σ_T →
+    target.arch_inv init_T σ_T →
+    source.final σ_S o →
+    ∃ (σ_T' : target.STATE),
+      target.star nd (jit.emit_epilogue ctx code_S) σ_T σ_T' [] ∧
+      target.final σ_T' o ∧
+      target.arch_inv init_T σ_T'
 
 -- If the JIT produces some code for one source instruction, then starting from related source and
 -- target states, stepping the source instruction is related to some state reachable from the
@@ -491,28 +494,28 @@ axiom epilogue_correct :
 --
 -- This is proved in SMT.
 axiom per_insn_correct :
-  ∀ (oracle : NONDET) (ctx : CONTEXT) (i : source.PC) (code_S : source.CODE)
-    (f_T : target.CODE) (σ_S σ_S' : source.STATE) (init_T σ_T : target.STATE)
-    (tr : TRACE) (code_T : target.CODE),
+  ∀ (nd : ORACLE) (ctx : CONTEXT) (idx : source.PC) (code_S : source.CODE)
+    (frag_T : target.CODE) (σ_S σ_S' : source.STATE) (init_T σ_T : target.STATE) (tr : TRACE)
+    (code_T : target.CODE),
       source.wf ctx code_S →
-      jit.emit_insn ctx code_S i = some f_T →
+      jit.emit_insn ctx code_S idx = some frag_T →
       σ_S ~[ctx] σ_T →
       target.arch_inv init_T σ_T →
-      source.pc_of σ_S = i →
-      source.step oracle code_S σ_S σ_S' tr →
+      source.pc_of σ_S = idx →
+      source.step nd code_S σ_S σ_S' tr →
       ∃ (σ_T' : target.STATE),
-        target.star oracle f_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T' ∧ target.arch_inv init_T σ_T'
+        target.star nd frag_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T' ∧ target.arch_inv init_T σ_T'
 
 lemma star_src_correct :
-  ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE),
-    source.safe oracle code_S σ_S →
-    source.star oracle code_S σ_S σ_S' tr →
+  ∀ (nd : ORACLE) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE),
+    source.safe nd code_S σ_S →
+    source.star nd code_S σ_S σ_S' tr →
     ∀ (init_T σ_T : target.STATE) (code_T : target.CODE),
       σ_S ~[jit.compute_ctx code_S] σ_T →
       target.arch_inv init_T σ_T →
       jit.compile code_S = some code_T →
       ∃ (σ_T' : target.STATE),
-        target.star oracle code_T σ_T σ_T' tr ∧ σ_S' ~[jit.compute_ctx code_S] σ_T' ∧ target.arch_inv init_T σ_T' :=
+        target.star nd code_T σ_T σ_T' tr ∧ σ_S' ~[jit.compute_ctx code_S] σ_T' ∧ target.arch_inv init_T σ_T' :=
 begin
   intros _ _ _ _ _ safe_S star_S,
   induction star_S with s1 s1 s2 s3 tr1 tr2 step_S star_S' IH,
@@ -539,7 +542,7 @@ begin
   cases hemit with f_T hemit,
   cases hemit with hemit_left hemit_right,
 
-  have hstep_T : ∃ t2, target.star oracle f_T σ_T t2 tr1 ∧ s2 ~[jit.compute_ctx code_S] t2 ∧ target.arch_inv init_T t2,
+  have hstep_T : ∃ t2, target.star nd f_T σ_T t2 tr1 ∧ s2 ~[jit.compute_ctx code_S] t2 ∧ target.arch_inv init_T t2,
   {
     apply per_insn_correct; try{assumption <|> reflexivity},
     constructor; assumption,
@@ -548,7 +551,7 @@ begin
   cases hstep_T with t2 hstep_T,
   cases hstep_T with hstep_T_left hstep_T_right,
 
-  have hstar_T : ∃ t3, target.star oracle code_T t2 t3 tr2 ∧ s3 ~[jit.compute_ctx code_S] t3 ∧ target.arch_inv init_T t3,
+  have hstar_T : ∃ t3, target.star nd code_T t2 t3 tr2 ∧ s3 ~[jit.compute_ctx code_S] t3 ∧ target.arch_inv init_T t3,
   {
     cases hstep_T_right,
     apply IH; try{assumption},
@@ -570,17 +573,18 @@ end
 
 -- The behavior of the source program is implemented by the jited target code.
 theorem forward_simulation :
-  ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
-    source.initial σ_S i →
-    source.star oracle code_S σ_S σ_S' tr →
-    source.final σ_S' res →
-    ∀ (σ_T : target.STATE) (code_T : target.CODE),
-      target.initial σ_T i →
-      jit.compile code_S = some code_T →
-      ∃ (σ_T' : target.STATE),
-        target.star oracle code_T σ_T σ_T' tr ∧
-        target.final σ_T' res ∧
-        target.arch_inv σ_T σ_T' :=
+  ∀ (nd : ORACLE) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE) (i : INPUT)
+    (o : OUTPUT),
+      source.initial σ_S i →
+      source.star nd code_S σ_S σ_S' tr →
+      source.final σ_S' o →
+      ∀ (σ_T : target.STATE) (code_T : target.CODE),
+        target.initial σ_T i →
+        jit.compile code_S = some code_T →
+        ∃ (σ_T' : target.STATE),
+          target.star nd code_T σ_T σ_T' tr ∧
+          target.final σ_T' o ∧
+          target.arch_inv σ_T σ_T' :=
 begin
   intros _ _ _ _ _ _ _ Hinitial_S H2 H3 _ _ H4 H5,
 
@@ -595,14 +599,14 @@ begin
   },
 
   -- Construct the prologue star
-  have hprologue : ∃ t2, target.star oracle (jit.emit_prologue (jit.compute_ctx code_S) code_S) σ_T t2 [] ∧
+  have hprologue : ∃ t2, target.star nd (jit.emit_prologue (jit.compute_ctx code_S) code_S) σ_T t2 [] ∧
                          σ_S ~[jit.compute_ctx code_S] t2 ∧ target.arch_inv σ_T t2,
   { apply prologue_correct; by assumption, },
   cases hprologue with t2 hprologue,
   cases hprologue,
 
   -- construct the regular instr star using the lemma defined above
-  have hstar : ∃ t3, target.star oracle code_T t2 t3 tr ∧ σ_S' ~[jit.compute_ctx code_S] t3 ∧ target.arch_inv σ_T t3,
+  have hstar : ∃ t3, target.star nd code_T t2 t3 tr ∧ σ_S' ~[jit.compute_ctx code_S] t3 ∧ target.arch_inv σ_T t3,
   {
     cases hprologue_right,
     apply star_src_correct; try{assumption},
@@ -612,7 +616,7 @@ begin
   cases hstar with hstar_left hstar_right,
 
   -- construct the epilogue star
-  have hepilogue : ∃ t4, target.star oracle (jit.emit_epilogue (jit.compute_ctx code_S) code_S) t3 t4 [] ∧ target.final t4 res ∧ target.arch_inv σ_T t4,
+  have hepilogue : ∃ t4, target.star nd (jit.emit_epilogue (jit.compute_ctx code_S) code_S) t3 t4 [] ∧ target.final t4 o ∧ target.arch_inv σ_T t4,
   {
     cases hstar_right,
     apply epilogue_correct; by assumption,
@@ -655,24 +659,27 @@ begin
 end
 
 lemma target_deterministic :
-  ∀ (oracle : NONDET) (code : target.CODE) (s1 s2 : target.STATE)
-    (tr : TRACE) (res : RESULT),
-    target.star oracle code s1 s2 tr →
-    target.final s2 res →
-    ∀ (s2' : target.STATE) (tr' : TRACE) (res' : RESULT),
-      target.star oracle code s1 s2' tr' →
-      target.final s2' res' →
-      (tr = tr' ∧ s2 = s2' ∧ res = res') :=
+  ∀ (nd : ORACLE) (code : target.CODE) (σ σ'₁ : target.STATE) (tr₁ : TRACE) (o₁ : OUTPUT),
+    target.star nd code σ σ'₁ tr₁ →
+    target.final σ'₁ o₁ →
+    ∀ (σ'₂ : target.STATE) (tr₂ : TRACE) (o₂ : OUTPUT),
+      target.star nd code σ σ'₂ tr₂ →
+      target.final σ'₂ o₂ →
+      (tr₁ = tr₂ ∧ σ'₁ = σ'₂ ∧ o₁ = o₂) :=
 begin
   intros _ _ _ _ _ _ h1 h2,
   induction h1 with s' s' s'' s''' tr1 tr2 h1 h3 IH,
   { intros _ _ _ h4 h5,
-    have : tr' = [] ∧ s2' = s',
-      by {apply machine.final_star, from h2, all_goals{assumption}},
+
+    have : tr₂ = [] ∧ σ'₂ = s',
+     { apply machine.final_star, tactic.swap,
+       from h4,
+       from h2,
+     },
     cases this,
     rw this_right at *,
     rw this_left at *,
-    have : res = res', apply target.result_deterministic; try{assumption},
+    have : o₁ = o₂, apply target.output_deterministic; try{assumption},
     cc,
   },
   { intros _ _ _ h4 h5,
@@ -686,59 +693,58 @@ begin
     { cases (machine.step_deterministic _ _ _ _ code _ _ _ _ _ h4_a_1 h1),
       rw left at *,
       rw right at *,
-      suffices : tr2 = h4_tr₂ ∧ s''' = s2' ∧ res = res', by tauto,
+      suffices : tr2 = h4_tr₂ ∧ s''' = σ'₂ ∧ o₁ = o₂, by tauto,
       apply IH; tauto,
     } }
 end
 
 lemma source_target_deterministic :
-  ∀ (oracle : NONDET) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE)
-    (i : INPUT) (res : RESULT),
-    source.initial σ_S i →
-    source.star oracle code_S σ_S σ_S' tr →
-    source.final σ_S' res →
-    ∀ (code_T : target.CODE) (σ_T σ_T' : target.STATE)
-      (tr' : TRACE) (res' : RESULT),
-      target.initial σ_T i →
-      jit.compile code_S = some code_T →
-      target.star oracle code_T σ_T σ_T' tr' →
-      target.final σ_T' res' →
-      (tr = tr' ∧ res = res' ∧ target.arch_inv σ_T σ_T') :=
+  ∀ (nd : ORACLE) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr_S : TRACE) (i : INPUT)
+    (o_S : OUTPUT),
+      source.initial σ_S i →
+      source.star nd code_S σ_S σ_S' tr_S →
+      source.final σ_S' o_S →
+      ∀ (code_T : target.CODE) (σ_T σ_T' : target.STATE) (tr_T : TRACE) (o_T : OUTPUT),
+        target.initial σ_T i →
+        jit.compile code_S = some code_T →
+        target.star nd code_T σ_T σ_T' tr_T →
+        target.final σ_T' o_T →
+        (tr_S = tr_T ∧ o_S = o_T ∧ target.arch_inv σ_T σ_T') :=
 begin
   intros _ _ _ _ _ _ _ HinitS h1 h2 _ _ _ _ _ HinitT h3 h4 h5,
   let x := forward_simulation,
-  specialize x oracle code_S σ_S σ_S' tr i res
+  specialize x nd code_S σ_S σ_S' tr_S i o_S
     (by assumption) (by assumption) (by assumption) σ_T code_T (by assumption)
     (by assumption),
   cases x with T H,
   cases H with H1 H2,
   cases H2,
-  suffices : tr = tr' ∧ T = σ_T',
+  suffices : tr_S = tr_T ∧ T = σ_T',
   { cases this with left right,
     rw left at *,
     rw right at *,
     split, by reflexivity,
     split; try{assumption},
-    apply target.result_deterministic; by assumption,
+    apply target.output_deterministic; by assumption,
   },
 
-  have : tr = tr' ∧ T = σ_T' ∧ res = res', apply target_deterministic; assumption,
+  have : tr_S = tr_T ∧ T = σ_T' ∧ o_S = o_T, apply target_deterministic; assumption,
   cc,
 end
 
 -- The behavior of the jited target code is allowed by the source program.
 lemma backward_simulation :
-  ∀ (code_S : source.CODE) (code_T : target.CODE)
-    (oracle : NONDET) (σ_T σ_T' : target.STATE) (σ_S : source.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
-    target.initial σ_T i →
-    jit.compile code_S = some code_T →
-    target.star oracle code_T σ_T σ_T' tr →
-    target.final σ_T' res →
-    source.initial σ_S i →
-    ∃ (σ_S' : source.STATE),
-      source.star oracle code_S σ_S σ_S' tr ∧
-      source.final σ_S' res ∧
-      target.arch_inv σ_T σ_T' :=
+  ∀ (code_S : source.CODE) (code_T : target.CODE) (nd : ORACLE) (σ_T σ_T' : target.STATE)
+    (σ_S : source.STATE) (tr : TRACE) (i : INPUT) (o : OUTPUT),
+      target.initial σ_T i →
+      jit.compile code_S = some code_T →
+      target.star nd code_T σ_T σ_T' tr →
+      target.final σ_T' o →
+      source.initial σ_S i →
+      ∃ (σ_S' : source.STATE),
+        source.star nd code_S σ_S σ_S' tr ∧
+        source.final σ_S' o ∧
+        target.arch_inv σ_T σ_T' :=
 begin
   intros,
   have terminates_S : source.always_terminates code_S,
@@ -746,13 +752,13 @@ begin
     apply jit.checker_safety; assumption,
   },
   dsimp [source.always_terminates] at *,
-  specialize terminates_S oracle σ_S i a_4,
+  specialize terminates_S nd σ_S i a_4,
   cases terminates_S with s' x,
   cases x with tr' x,
   cases x with res' H,
   existsi s',
   cases H,
-  suffices : tr' = tr ∧ res' = res ∧ target.arch_inv σ_T σ_T',
+  suffices : tr' = tr ∧ res' = o ∧ target.arch_inv σ_T σ_T',
   { cases this with left right, rw left at *,
     cases right with left right, rw left at *, rw right at *,
     repeat{split <|> assumption},
@@ -762,54 +768,54 @@ begin
 end
 
 theorem arch_safety :
-  ∀ (code_S : source.CODE) (code_T : target.CODE) (σ_T σ_T' : target.STATE)
-    (tr : TRACE) (res : RESULT) (oracle : NONDET) (i : INPUT),
-    jit.compile code_S = some code_T →
-    target.initial σ_T i →
-    target.star oracle code_T σ_T σ_T' tr →
-    target.final σ_T' res →
-    target.arch_inv σ_T σ_T' :=
+  ∀ (nd : ORACLE) (code_S : source.CODE) (code_T : target.CODE) (σ_T σ_T' : target.STATE)
+    (i : INPUT) (o : OUTPUT) (tr : TRACE),
+      jit.compile code_S = some code_T →
+      target.initial σ_T i →
+      target.star nd code_T σ_T σ_T' tr →
+      target.final σ_T' o →
+      target.arch_inv σ_T σ_T' :=
 begin
   intros _ _ _ _ _ _ _ _ comp tinit tstar tfinal,
 
   have sterm : source.always_terminates code_S,
   apply jit.checker_safety; assumption,
   dsimp [source.always_terminates, machine.always_terminates] at *,
-  specialize sterm oracle,
+  specialize sterm nd,
   cases (source.initial_inhabited i) with σ_S sinit,
   specialize sterm σ_S i sinit,
   cases sterm with σ_S' sterm,
   cases sterm with tr2 sterm,
   cases sterm with res2 sterm,
   cases sterm with sstar sfinal,
-  cases (forward_simulation oracle code_S σ_S σ_S' tr2 i res2 sinit sstar sfinal σ_T code_T tinit comp)
+  cases (forward_simulation nd code_S σ_S σ_S' tr2 i res2 sinit sstar sfinal σ_T code_T tinit comp)
     with σ_T2' forward,
 
   cases forward,
   cases forward_right,
-  have : tr = tr2 ∧ σ_T' = σ_T2' ∧ res = res2, apply target_deterministic; assumption,
+  have : tr = tr2 ∧ σ_T' = σ_T2' ∧ o = res2, apply target_deterministic; assumption,
   cc,
 end
 
 theorem interpreter_equivalence :
-  ∀ (code_S : source.CODE) (code_T : target.CODE)
-    (oracle : NONDET) (σ_S : source.STATE) (σ_T : target.STATE) (tr : TRACE) (i : INPUT) (res : RESULT),
-    jit.compile code_S = some code_T →
-    source.initial σ_S i →
-    target.initial σ_T i →
-    ((∃ (σ_S' : source.STATE),
-      source.star oracle code_S σ_S σ_S' tr ∧
-      source.final σ_S' res)
-    ↔
-    (∃ (σ_T' : target.STATE),
-      target.star oracle code_T σ_T σ_T' tr ∧
-      target.final σ_T' res)) :=
+  ∀ (nd : ORACLE) (code_S : source.CODE) (code_T : target.CODE) (σ_S : source.STATE)
+    (σ_T : target.STATE) (i : INPUT) (o : OUTPUT) (tr : TRACE),
+      jit.compile code_S = some code_T →
+      source.initial σ_S i →
+      target.initial σ_T i →
+      ((∃ (σ_S' : source.STATE),
+        source.star nd code_S σ_S σ_S' tr ∧
+        source.final σ_S' o)
+      ↔
+      (∃ (σ_T' : target.STATE),
+        target.star nd code_T σ_T σ_T' tr ∧
+        target.final σ_T' o)) :=
 begin
   intros,
   split; intros,
   { cases a_3 with σ_S' a,
     cases a with sstar sfinal,
-    cases (forward_simulation oracle code_S σ_S σ_S' tr i res a_1 sstar sfinal σ_T code_T a_2 a)
+    cases (forward_simulation nd code_S σ_S σ_S' tr i o a_1 sstar sfinal σ_T code_T a_2 a)
       with σ_T' a,
     cases a with tstar a,
     cases a with tfinal tinv,
@@ -817,7 +823,7 @@ begin
   },
   { cases a_3 with σ_T' a,
     cases a with tstar tfinal,
-    cases (backward_simulation code_S code_T oracle σ_T σ_T' _ _ _ _ _ _ _ _ _) with σ_S' a; repeat{any_goals{assumption}},
+    cases (backward_simulation code_S code_T nd σ_T σ_T' _ _ _ _ _ _ _ _ _) with σ_S' a; repeat{any_goals{assumption}},
     cases a with sstar a,
     cases a with sfinal inv,
     existsi σ_S',
