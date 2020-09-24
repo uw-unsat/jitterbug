@@ -440,15 +440,6 @@ namespace jit
       jit.compile code_S = some code_T →
       source.wf (compute_ctx code_S) code_S
 
-  -- If compile produces some code, then the source program was accepted by the BPF checker and
-  -- therefore always terminates.
-  --
-  -- This is assumed to hold.
-  axiom checker_safety :
-    ∀ (code_S : source.CODE) (code_T : target.CODE),
-      jit.compile code_S = some code_T →
-      source.always_terminates code_S
-
 end jit
 
 -- JIT correctness
@@ -576,6 +567,7 @@ theorem forward_simulation :
   ∀ (nd : ORACLE) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE) (i : INPUT)
     (o : OUTPUT),
       source.initial σ_S i →
+      source.always_terminates code_S →
       source.star nd code_S σ_S σ_S' tr →
       source.final σ_S' o →
       ∀ (σ_T : target.STATE) (code_T : target.CODE),
@@ -586,16 +578,11 @@ theorem forward_simulation :
           target.final σ_T' o ∧
           target.arch_inv σ_T σ_T' :=
 begin
-  intros _ _ _ _ _ _ _ Hinitial_S H2 H3 _ _ H4 H5,
+  intros _ _ _ _ _ _ _ Hinitial_S terminates_S H2 H3 _ _ H4 H5,
 
   have wf_S : source.wf (jit.compute_ctx code_S) code_S,
   {
     apply jit.ctx_correctness; assumption,
-  },
-
-  have terminates_S : source.always_terminates code_S,
-  {
-    apply jit.checker_safety; assumption,
   },
 
   -- Construct the prologue star
@@ -702,6 +689,7 @@ lemma source_target_deterministic :
   ∀ (nd : ORACLE) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr_S : TRACE) (i : INPUT)
     (o_S : OUTPUT),
       source.initial σ_S i →
+      source.always_terminates code_S →
       source.star nd code_S σ_S σ_S' tr_S →
       source.final σ_S' o_S →
       ∀ (code_T : target.CODE) (σ_T σ_T' : target.STATE) (tr_T : TRACE) (o_T : OUTPUT),
@@ -711,10 +699,10 @@ lemma source_target_deterministic :
         target.final σ_T' o_T →
         (tr_S = tr_T ∧ o_S = o_T ∧ target.arch_inv σ_T σ_T') :=
 begin
-  intros _ _ _ _ _ _ _ HinitS h1 h2 _ _ _ _ _ HinitT h3 h4 h5,
+  intros _ _ _ _ _ _ _ HinitS Sterminates h1 h2 _ _ _ _ _ HinitT h3 h4 h5,
   let x := forward_simulation,
   specialize x nd code_S σ_S σ_S' tr_S i o_S
-    (by assumption) (by assumption) (by assumption) σ_T code_T (by assumption)
+    (by assumption) (by assumption) (by assumption) (by assumption) σ_T code_T (by assumption)
     (by assumption),
   cases x with T H,
   cases H with H1 H2,
@@ -736,6 +724,7 @@ end
 lemma backward_simulation :
   ∀ (code_S : source.CODE) (code_T : target.CODE) (nd : ORACLE) (σ_T σ_T' : target.STATE)
     (σ_S : source.STATE) (tr : TRACE) (i : INPUT) (o : OUTPUT),
+      source.always_terminates code_S →
       target.initial σ_T i →
       jit.compile code_S = some code_T →
       target.star nd code_T σ_T σ_T' tr →
@@ -746,11 +735,8 @@ lemma backward_simulation :
         source.final σ_S' o ∧
         target.arch_inv σ_T σ_T' :=
 begin
-  intros,
-  have terminates_S : source.always_terminates code_S,
-  {
-    apply jit.checker_safety; assumption,
-  },
+  intros _ _ _ _ _ _ _ _ _ terminates_S _ _ _ _ _,
+  let y := terminates_S,
   dsimp [source.always_terminates] at *,
   specialize terminates_S nd σ_S i a_4,
   cases terminates_S with s' x,
@@ -770,16 +756,16 @@ end
 theorem arch_safety :
   ∀ (nd : ORACLE) (code_S : source.CODE) (code_T : target.CODE) (σ_T σ_T' : target.STATE)
     (i : INPUT) (o : OUTPUT) (tr : TRACE),
+      source.always_terminates code_S →
       jit.compile code_S = some code_T →
       target.initial σ_T i →
       target.star nd code_T σ_T σ_T' tr →
       target.final σ_T' o →
       target.arch_inv σ_T σ_T' :=
 begin
-  intros _ _ _ _ _ _ _ _ comp tinit tstar tfinal,
+  intros _ _ _ _ _ _ _ _ sterm comp tinit tstar tfinal,
+  let y := sterm,
 
-  have sterm : source.always_terminates code_S,
-  apply jit.checker_safety; assumption,
   dsimp [source.always_terminates, machine.always_terminates] at *,
   specialize sterm nd,
   cases (source.initial_inhabited i) with σ_S sinit,
@@ -788,7 +774,7 @@ begin
   cases sterm with tr2 sterm,
   cases sterm with res2 sterm,
   cases sterm with sstar sfinal,
-  cases (forward_simulation nd code_S σ_S σ_S' tr2 i res2 sinit sstar sfinal σ_T code_T tinit comp)
+  cases (forward_simulation nd code_S σ_S σ_S' tr2 i res2 sinit y sstar sfinal σ_T code_T tinit comp)
     with σ_T2' forward,
 
   cases forward,
@@ -800,6 +786,7 @@ end
 theorem interpreter_equivalence :
   ∀ (nd : ORACLE) (code_S : source.CODE) (code_T : target.CODE) (σ_S : source.STATE)
     (σ_T : target.STATE) (i : INPUT) (o : OUTPUT) (tr : TRACE),
+      source.always_terminates code_S →
       jit.compile code_S = some code_T →
       source.initial σ_S i →
       target.initial σ_T i →
@@ -811,19 +798,20 @@ theorem interpreter_equivalence :
         target.star nd code_T σ_T σ_T' tr ∧
         target.final σ_T' o)) :=
 begin
-  intros,
+  intros _ _ _ _ _ _ _ _ sterm comp inits initt,
   split; intros,
-  { cases a_3 with σ_S' a,
+  { cases a with σ_S' a,
     cases a with sstar sfinal,
-    cases (forward_simulation nd code_S σ_S σ_S' tr i o a_1 sstar sfinal σ_T code_T a_2 a)
+    cases (forward_simulation nd code_S σ_S σ_S' tr i o _ _ sstar sfinal σ_T code_T _ _)
       with σ_T' a,
     cases a with tstar a,
     cases a with tfinal tinv,
     existsi σ_T', cc,
+    all_goals{assumption},
   },
-  { cases a_3 with σ_T' a,
+  { cases a with σ_T' a,
     cases a with tstar tfinal,
-    cases (backward_simulation code_S code_T nd σ_T σ_T' _ _ _ _ _ _ _ _ _) with σ_S' a; repeat{any_goals{assumption}},
+    cases (backward_simulation code_S code_T nd σ_T σ_T' _ _ _ _ _ _ _ _ _ _) with σ_S' a; repeat{any_goals{assumption}},
     cases a with sstar a,
     cases a with sfinal inv,
     existsi σ_S',
