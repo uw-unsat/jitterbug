@@ -6,9 +6,7 @@ This file contains the metatheory of JIT correctness.
 
 The main theorem is interpreter_equivalence, proved based on the following two sets of axioms.
 
-Three axioms are assumed to be correct (e.g., ensured by the Linux kernel):
-
-* checker_safety: a program that passes the checker terminates.
+Two axioms are assumed to be correct (e.g., ensured by the Linux kernel):
 
 * ctx_correctness: the JIT computes a correct JIT context for the source program
 
