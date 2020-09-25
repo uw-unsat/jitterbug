@@ -388,7 +388,10 @@ namespace target
 
   -- Whether the architectural invariants hold for some state
   -- w.r.t an initial state
-  constant arch_inv : STATE → STATE → Prop
+  constant arch_safe : STATE → STATE → Prop
+
+  -- Inductive form of arch safety, depends on ctx.
+  constant arch_safe_inv : CONTEXT → STATE → STATE → Prop
 
   -- The output of a final state is uniquely determined by the state.
   axiom output_deterministic :
@@ -459,7 +462,7 @@ axiom prologue_correct :
       ∃ (σ_T' : target.STATE),
         target.star nd (jit.emit_prologue ctx code_S) σ_T σ_T' [] ∧
         σ_S ~[ctx] σ_T' ∧
-        target.arch_inv σ_T σ_T'
+        target.arch_safe_inv ctx σ_T σ_T'
 
 -- If the source state has reached a OUTPUT, then executing the epilogue in a related target state
 -- reaches a state with the same OUTPUT (and no trace).
@@ -470,12 +473,12 @@ axiom epilogue_correct :
     (init_T σ_T : target.STATE) (o : OUTPUT),
     source.wf ctx code_S →
     σ_S ~[ctx] σ_T →
-    target.arch_inv init_T σ_T →
+    target.arch_safe_inv ctx init_T σ_T →
     source.final σ_S o →
     ∃ (σ_T' : target.STATE),
       target.star nd (jit.emit_epilogue ctx code_S) σ_T σ_T' [] ∧
       target.final σ_T' o ∧
-      target.arch_inv init_T σ_T'
+      target.arch_safe init_T σ_T'
 
 -- If the JIT produces some code for one source instruction, then starting from related source and
 -- target states, stepping the source instruction is related to some state reachable from the
@@ -489,11 +492,11 @@ axiom per_insn_correct :
       source.wf ctx code_S →
       jit.emit_insn ctx code_S idx = some frag_T →
       σ_S ~[ctx] σ_T →
-      target.arch_inv init_T σ_T →
+      target.arch_safe_inv ctx init_T σ_T →
       source.pc_of σ_S = idx →
       source.step nd code_S σ_S σ_S' tr →
       ∃ (σ_T' : target.STATE),
-        target.star nd frag_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T' ∧ target.arch_inv init_T σ_T'
+        target.star nd frag_T σ_T σ_T' tr ∧ σ_S' ~[ctx] σ_T' ∧ target.arch_safe_inv ctx init_T σ_T'
 
 lemma star_src_correct :
   ∀ (nd : ORACLE) (code_S : source.CODE) (σ_S σ_S' : source.STATE) (tr : TRACE),
@@ -501,10 +504,12 @@ lemma star_src_correct :
     source.star nd code_S σ_S σ_S' tr →
     ∀ (init_T σ_T : target.STATE) (code_T : target.CODE),
       σ_S ~[jit.compute_ctx code_S] σ_T →
-      target.arch_inv init_T σ_T →
+      target.arch_safe_inv (jit.compute_ctx code_S) init_T σ_T →
       jit.compile code_S = some code_T →
       ∃ (σ_T' : target.STATE),
-        target.star nd code_T σ_T σ_T' tr ∧ σ_S' ~[jit.compute_ctx code_S] σ_T' ∧ target.arch_inv init_T σ_T' :=
+        target.star nd code_T σ_T σ_T' tr ∧
+        σ_S' ~[jit.compute_ctx code_S] σ_T' ∧
+        target.arch_safe_inv (jit.compute_ctx code_S) init_T σ_T' :=
 begin
   intros _ _ _ _ _ safe_S star_S,
   induction star_S with s1 s1 s2 s3 tr1 tr2 step_S star_S' IH,
@@ -531,7 +536,7 @@ begin
   cases hemit with f_T hemit,
   cases hemit with hemit_left hemit_right,
 
-  have hstep_T : ∃ t2, target.star nd f_T σ_T t2 tr1 ∧ s2 ~[jit.compute_ctx code_S] t2 ∧ target.arch_inv init_T t2,
+  have hstep_T : ∃ t2, target.star nd f_T σ_T t2 tr1 ∧ s2 ~[jit.compute_ctx code_S] t2 ∧ target.arch_safe_inv (jit.compute_ctx code_S) init_T t2,
   {
     apply per_insn_correct; try{assumption <|> reflexivity},
     constructor; assumption,
@@ -540,7 +545,7 @@ begin
   cases hstep_T with t2 hstep_T,
   cases hstep_T with hstep_T_left hstep_T_right,
 
-  have hstar_T : ∃ t3, target.star nd code_T t2 t3 tr2 ∧ s3 ~[jit.compute_ctx code_S] t3 ∧ target.arch_inv init_T t3,
+  have hstar_T : ∃ t3, target.star nd code_T t2 t3 tr2 ∧ s3 ~[jit.compute_ctx code_S] t3 ∧ target.arch_safe_inv (jit.compute_ctx code_S) init_T t3,
   {
     cases hstep_T_right,
     apply IH; try{assumption},
@@ -574,7 +579,7 @@ theorem forward_simulation :
         ∃ (σ_T' : target.STATE),
           target.star nd code_T σ_T σ_T' tr ∧
           target.final σ_T' o ∧
-          target.arch_inv σ_T σ_T' :=
+          target.arch_safe σ_T σ_T' :=
 begin
   intros _ _ _ _ _ _ _ Hinitial_S terminates_S H2 H3 _ _ H4 H5,
 
@@ -585,13 +590,13 @@ begin
 
   -- Construct the prologue star
   have hprologue : ∃ t2, target.star nd (jit.emit_prologue (jit.compute_ctx code_S) code_S) σ_T t2 [] ∧
-                         σ_S ~[jit.compute_ctx code_S] t2 ∧ target.arch_inv σ_T t2,
+                         σ_S ~[jit.compute_ctx code_S] t2 ∧ target.arch_safe_inv (jit.compute_ctx code_S) σ_T t2,
   { apply prologue_correct; by assumption, },
   cases hprologue with t2 hprologue,
   cases hprologue,
 
   -- construct the regular instr star using the lemma defined above
-  have hstar : ∃ t3, target.star nd code_T t2 t3 tr ∧ σ_S' ~[jit.compute_ctx code_S] t3 ∧ target.arch_inv σ_T t3,
+  have hstar : ∃ t3, target.star nd code_T t2 t3 tr ∧ σ_S' ~[jit.compute_ctx code_S] t3 ∧ target.arch_safe_inv (jit.compute_ctx code_S) σ_T t3,
   {
     cases hprologue_right,
     apply star_src_correct; try{assumption},
@@ -601,7 +606,7 @@ begin
   cases hstar with hstar_left hstar_right,
 
   -- construct the epilogue star
-  have hepilogue : ∃ t4, target.star nd (jit.emit_epilogue (jit.compute_ctx code_S) code_S) t3 t4 [] ∧ target.final t4 o ∧ target.arch_inv σ_T t4,
+  have hepilogue : ∃ t4, target.star nd (jit.emit_epilogue (jit.compute_ctx code_S) code_S) t3 t4 [] ∧ target.final t4 o ∧ target.arch_safe σ_T t4,
   {
     cases hstar_right,
     apply epilogue_correct; by assumption,
@@ -695,7 +700,7 @@ lemma source_target_deterministic :
         jit.compile code_S = some code_T →
         target.star nd code_T σ_T σ_T' tr_T →
         target.final σ_T' o_T →
-        (tr_S = tr_T ∧ o_S = o_T ∧ target.arch_inv σ_T σ_T') :=
+        (tr_S = tr_T ∧ o_S = o_T ∧ target.arch_safe σ_T σ_T') :=
 begin
   intros _ _ _ _ _ _ _ HinitS Sterminates h1 h2 _ _ _ _ _ HinitT h3 h4 h5,
   let x := forward_simulation,
@@ -731,7 +736,7 @@ lemma backward_simulation :
       ∃ (σ_S' : source.STATE),
         source.star nd code_S σ_S σ_S' tr ∧
         source.final σ_S' o ∧
-        target.arch_inv σ_T σ_T' :=
+        target.arch_safe σ_T σ_T' :=
 begin
   intros _ _ _ _ _ _ _ _ _ terminates_S _ _ _ _ _,
   let y := terminates_S,
@@ -742,7 +747,7 @@ begin
   cases x with res' H,
   existsi s',
   cases H,
-  suffices : tr' = tr ∧ res' = o ∧ target.arch_inv σ_T σ_T',
+  suffices : tr' = tr ∧ res' = o ∧ target.arch_safe σ_T σ_T',
   { cases this with left right, rw left at *,
     cases right with left right, rw left at *, rw right at *,
     repeat{split <|> assumption},
@@ -759,7 +764,7 @@ theorem arch_safety :
       target.initial σ_T i →
       target.star nd code_T σ_T σ_T' tr →
       target.final σ_T' o →
-      target.arch_inv σ_T σ_T' :=
+      target.arch_safe σ_T σ_T' :=
 begin
   intros _ _ _ _ _ _ _ _ sterm comp tinit tstar tfinal,
   let y := sterm,
