@@ -159,24 +159,6 @@
     ; Program input matches
     (equal? (rv32_get_bpf_reg cpu BPF_REG_1) (program-input-r1 input))))
 
-;;; ; Things guaranteed by epilogue.
-;;; (define (rv32-epilogue-guarantees ctx cpu)
-;;;   (define pc (riscv:cpu-pc cpu))
-;;;   (define saved-regs #f)
-;;;   (define memmgr (riscv:cpu-memmgr cpu))
-;;;   (&&
-
-;;;     ; Callee-saved registers are preserved by the BPF JITed program.
-;;;     (apply && (for/list ([reg '(ra gp tp fp s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11)])
-;;;       (equal? (riscv:@gpr-ref saved-regs reg)
-;;;               (riscv:gpr-ref cpu reg))))
-
-;;;     ; Stack pointer is aligned.
-;;;     (core:bvaligned? (riscv:gpr-ref cpu 'sp) (bv STACK_ALIGN 32))
-
-;;;     ; Stack pointer points to base of stack.
-;;;     (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr))))
-
 (define (rv32-max-stack-usage ctx)
   (define bpf_stack_depth (bpf-prog-aux-stack_depth (context-aux ctx)))
   (round_up (bvadd (round_up bpf_stack_depth (bv STACK_ALIGN 32)) ; BPF stack size
