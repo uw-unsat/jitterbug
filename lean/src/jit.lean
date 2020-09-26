@@ -409,9 +409,9 @@ namespace jit
   -- Emit target code for a single source instruction.
   constant emit_insn : CONTEXT → source.CODE → source.PC → option target.CODE
 
-  constant emit_prologue : CONTEXT → source.CODE → target.CODE
+  constant emit_prologue : CONTEXT → source.CODE → option target.CODE
 
-  constant emit_epilogue : CONTEXT → source.CODE → target.CODE
+  constant emit_epilogue : CONTEXT → source.CODE → option target.CODE
 
   constant compute_ctx : source.CODE → CONTEXT
 
@@ -430,8 +430,8 @@ namespace jit
         code_S i = some insn →
         ∃ (frag_T : target.CODE),
           jit.emit_insn (compute_ctx code_S) code_S i = some frag_T ∧ frag_T <+ code_T) ∧
-      jit.emit_prologue (compute_ctx code_S) code_S <+ code_T ∧
-      jit.emit_epilogue (compute_ctx code_S) code_S <+ code_T
+      (∃ (frag_T : target.CODE), jit.emit_prologue (compute_ctx code_S) code_S = some frag_T ∧ frag_T <+ code_T) ∧
+      (∃ (frag_T : target.CODE), jit.emit_epilogue (compute_ctx code_S) code_S = some frag_T ∧ frag_T <+ code_T)
 
   -- If compile produces some code, then the JIT context it computes is well-formed
   --
@@ -455,12 +455,13 @@ notation s1 `~[`:50 ctx `]` s2:50 := related ctx s1 s2
 -- This is proved in SMT.
 axiom prologue_correct :
   ∀ (nd : ORACLE) (ctx : CONTEXT) (σ_T : target.STATE) (σ_S : source.STATE) (i : INPUT)
-    (code_S : source.CODE),
+    (code_S : source.CODE) (code_T : target.CODE),
       source.wf ctx code_S →
       target.initial σ_T i →
       source.initial σ_S i →
+      jit.emit_prologue ctx code_S = some code_T →
       ∃ (σ_T' : target.STATE),
-        target.star nd (jit.emit_prologue ctx code_S) σ_T σ_T' [] ∧
+        target.star nd code_T σ_T σ_T' [] ∧
         σ_S ~[ctx] σ_T' ∧
         target.arch_safe_inv ctx σ_T σ_T'
 
@@ -469,14 +470,15 @@ axiom prologue_correct :
 --
 -- This is proved in SMT.
 axiom epilogue_correct :
-  ∀ (nd : ORACLE) (ctx : CONTEXT) (code_S : source.CODE) (σ_S : source.STATE)
+  ∀ (nd : ORACLE) (ctx : CONTEXT) (code_S : source.CODE) (code_T : target.CODE) (σ_S : source.STATE)
     (init_T σ_T : target.STATE) (o : OUTPUT),
     source.wf ctx code_S →
     σ_S ~[ctx] σ_T →
     target.arch_safe_inv ctx init_T σ_T →
     source.final σ_S o →
+    jit.emit_epilogue ctx code_S = some code_T →
     ∃ (σ_T' : target.STATE),
-      target.star nd (jit.emit_epilogue ctx code_S) σ_T σ_T' [] ∧
+      target.star nd code_T σ_T σ_T' [] ∧
       target.final σ_T' o ∧
       target.arch_safe init_T σ_T'
 
@@ -588,8 +590,17 @@ begin
     apply jit.ctx_correctness; assumption,
   },
 
+  -- Get the code to run in the target and show code_T is a superset of each component
+  cases (jit.layout_consistency code_S code_T H5) with ec_insn ec,
+  cases ec with ec_prologue ec_epilogue,
+
+  cases ec_prologue with prologue prologue_subseteq,
+  cases prologue_subseteq with prologue_eq prologue_subseteq,
+  cases ec_epilogue with epilogue epilogue_subseteq,
+  cases epilogue_subseteq with epilogue_eq epilogue_subseteq,
+
   -- Construct the prologue star
-  have hprologue : ∃ t2, target.star nd (jit.emit_prologue (jit.compute_ctx code_S) code_S) σ_T t2 [] ∧
+  have hprologue : ∃ t2, target.star nd prologue σ_T t2 [] ∧
                          σ_S ~[jit.compute_ctx code_S] t2 ∧ target.arch_safe_inv (jit.compute_ctx code_S) σ_T t2,
   { apply prologue_correct; by assumption, },
   cases hprologue with t2 hprologue,
@@ -606,7 +617,7 @@ begin
   cases hstar with hstar_left hstar_right,
 
   -- construct the epilogue star
-  have hepilogue : ∃ t4, target.star nd (jit.emit_epilogue (jit.compute_ctx code_S) code_S) t3 t4 [] ∧ target.final t4 o ∧ target.arch_safe σ_T t4,
+  have hepilogue : ∃ t4, target.star nd epilogue t3 t4 [] ∧ target.final t4 o ∧ target.arch_safe σ_T t4,
   {
     cases hstar_right,
     apply epilogue_correct; by assumption,
@@ -623,17 +634,13 @@ begin
 
   cases hepilogue_right, by assumption,
 
-  -- Get the code to run in the target and show code_T is a superset of each component
-  cases (jit.layout_consistency code_S code_T H5) with ec_insn ec,
-  cases ec with ec_prologue ec_epilogue,
-
   -- Run the prologue
   change tr with (list.nil ++ tr),
   apply machine.star_trans,
   {
     apply machine.star_subset,
     apply hprologue_left,
-    apply ec_prologue,
+    assumption,
   },
 
   -- Run the middle
@@ -644,7 +651,8 @@ begin
   },
 
   -- Run the epilogue
-  apply machine.star_subset, tactic.swap, from ec_epilogue,
+  apply machine.star_subset,
+  from hepilogue_left,
   assumption,
 end
 
