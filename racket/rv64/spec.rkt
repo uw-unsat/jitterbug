@@ -95,7 +95,7 @@
   #:arch-invariants rv64-arch-invariants
   #:init-arch-invariants! rv64-init-arch-invariants!
   #:run-code run-jitted-code
-  #:run-jit emit_insn
+  #:emit-insn emit_insn
   #:init-ctx rv64-init-ctx
   #:bpf-to-target-pc bpf-to-target-pc
   #:code-size code-size

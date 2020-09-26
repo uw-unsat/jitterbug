@@ -131,7 +131,7 @@
   #:init-arch-invariants! arm32-init-arch-invariants!
   #:abstract-regs cpu-abstract-regs
   #:run-code run-jitted-code
-  #:run-jit build_insn
+  #:emit-insn build_insn
   #:init-ctx init-ctx
   #:bpf-to-target-pc bpf-to-target-pc
   #:code-size code-size

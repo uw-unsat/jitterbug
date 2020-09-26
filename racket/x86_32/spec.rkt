@@ -147,7 +147,7 @@
 (define x86_32-target (make-bpf-target
   #:target-bitwidth 32
   #:abstract-regs cpu-abstract-regs
-  #:run-jit emit_insn
+  #:emit-insn emit_insn
   #:run-code run-jitted-code
   #:init-cpu init-x86-cpu
   #:init-arch-invariants! init-arch-invariants!

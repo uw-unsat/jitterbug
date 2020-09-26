@@ -211,7 +211,7 @@
   #:arch-safety rv32-arch-safety
   #:init-arch-invariants! rv32-init-arch-invariants!
   #:run-code run-jitted-code
-  #:run-jit emit_insn
+  #:emit-insn emit_insn
   #:emit-prologue (lambda (ctx) (bpf_jit_build_prologue ctx) (context-insns ctx))
   #:emit-epilogue (lambda (ctx) (bpf_jit_build_epilogue ctx) (context-insns ctx))
   #:initial-state? rv32-initial-state?
