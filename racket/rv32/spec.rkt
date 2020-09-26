@@ -83,7 +83,18 @@
   (for ([inv (rv32-cpu-invariant-registers ctx cpu)])
     (riscv:gpr-set! cpu (car inv) (cdr inv))))
 
-(define (rv32-arch-invariants ctx saved-cpu cpu #:final [final #f])
+(define (rv32-arch-safety Tinitial Tfinal)
+  (define memmgr (riscv:cpu-memmgr Tfinal))
+  (&&
+    ; The stack is restored.
+    (equal? (riscv:gpr-ref Tfinal 'sp) (hybrid-memmgr-stackbase memmgr))
+    ; Callee-save registers are restored.
+    (apply &&
+      (for/list ([reg '(ra gp tp fp s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11)])
+        (equal? (riscv:gpr-ref Tinitial reg)
+                (riscv:gpr-ref Tfinal reg))))))
+
+(define (rv32-arch-invariants ctx saved-cpu cpu)
   (define bpf_stack_depth (bpf-prog-aux-stack_depth (context-aux ctx)))
   (define pc (riscv:cpu-pc cpu))
   (define memmgr (riscv:cpu-memmgr cpu))
@@ -106,36 +117,24 @@
                       (bv (* BPF_JIT_SCRATCH_REGS 4) 32)) ; Space for stacked BPF regs
                 (bv STACK_ALIGN 32))) ; Round up to align stack to 16 bytes.
 
-    ; Saved registers preserved.
-    (cond
-      ; If state is not final, then saved registers are on stack.
-      [(! final)
-        (&& (equal? (riscv:gpr-ref saved-cpu 'ra) (loadsavedreg (- 4)))
-            (equal? (riscv:gpr-ref saved-cpu 'fp) (loadsavedreg (- 8)))
-            (equal? (riscv:gpr-ref saved-cpu 's1) (loadsavedreg (- 12)))
-            (equal? (riscv:gpr-ref saved-cpu 's2) (loadsavedreg (- 16)))
-            (equal? (riscv:gpr-ref saved-cpu 's3) (loadsavedreg (- 20)))
-            (equal? (riscv:gpr-ref saved-cpu 's4) (loadsavedreg (- 24)))
-            (equal? (riscv:gpr-ref saved-cpu 's5) (loadsavedreg (- 28)))
-            (equal? (riscv:gpr-ref saved-cpu 's6) (loadsavedreg (- 32)))
-            (equal? (riscv:gpr-ref saved-cpu 's7) (loadsavedreg (- 36)))
-            (apply && (for/list ([reg '(gp tp s8 s9 s10 s11)])
-              (equal? (riscv:gpr-ref saved-cpu reg)
-                      (riscv:gpr-ref cpu reg)))))]
-
-        ; For final states, regs must match.
-        [else
-          ; Callee-saved registers are preserved by the BPF JITed program.
-          (apply && (for/list ([reg '(ra gp tp fp s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11)])
-            (equal? (riscv:gpr-ref saved-cpu reg)
-                    (riscv:gpr-ref cpu reg))))])
+    ; Saved registers stored on stack.
+    (&& (equal? (riscv:gpr-ref saved-cpu 'ra) (loadsavedreg (- 4)))
+        (equal? (riscv:gpr-ref saved-cpu 'fp) (loadsavedreg (- 8)))
+        (equal? (riscv:gpr-ref saved-cpu 's1) (loadsavedreg (- 12)))
+        (equal? (riscv:gpr-ref saved-cpu 's2) (loadsavedreg (- 16)))
+        (equal? (riscv:gpr-ref saved-cpu 's3) (loadsavedreg (- 20)))
+        (equal? (riscv:gpr-ref saved-cpu 's4) (loadsavedreg (- 24)))
+        (equal? (riscv:gpr-ref saved-cpu 's5) (loadsavedreg (- 28)))
+        (equal? (riscv:gpr-ref saved-cpu 's6) (loadsavedreg (- 32)))
+        (equal? (riscv:gpr-ref saved-cpu 's7) (loadsavedreg (- 36)))
+        (apply && (for/list ([reg '(gp tp s8 s9 s10 s11)])
+          (equal? (riscv:gpr-ref saved-cpu reg)
+                  (riscv:gpr-ref cpu reg)))))
 
     ; Registers have the correct concretized values.
-    (if (! final)
-      (apply &&
-        (for/list ([inv (rv32-cpu-invariant-registers ctx cpu)])
-          (equal? (riscv:gpr-ref cpu (car inv)) (cdr inv))))
-      (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr)))))
+    (apply &&
+      (for/list ([inv (rv32-cpu-invariant-registers ctx cpu)])
+        (equal? (riscv:gpr-ref cpu (car inv)) (cdr inv))))))
 
 (define (rv32-cpu-invariant-registers ctx cpu)
   (define memmgr (riscv:cpu-memmgr cpu))
@@ -209,6 +208,7 @@
   #:abstract-tail-call-cnt (lambda (cpu) (bvsub (bv MAX_TAIL_CALL_CNT 32) (riscv:gpr-ref cpu RV_REG_TCC)))
   #:simulate-call rv32-simulate-call
   #:arch-invariants rv32-arch-invariants
+  #:arch-safety rv32-arch-safety
   #:init-arch-invariants! rv32-init-arch-invariants!
   #:run-code run-jitted-code
   #:run-jit emit_insn

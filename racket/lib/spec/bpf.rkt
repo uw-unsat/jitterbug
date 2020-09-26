@@ -164,6 +164,7 @@
   init-cpu ; Create a new cpu from (target_pc, bpf_cpu)
   set-cpu-pc! ; Set the program counter in CPU
   arch-invariants ; Implementation invariants for CPU
+  arch-safety ;
   init-arch-invariants! ; Initialize CPU with invariants, e.g., to concretize registers
   max-size ; Maximum size of target generated code
   init-ctx ; Initialize JIT context
@@ -201,6 +202,7 @@
   #:init-cpu init-cpu
   #:set-cpu-pc! [set-cpu-pc! #f]
   #:arch-invariants [arch-invariants (lambda a #t)]
+  #:arch-safety [arch-safety (lambda a #t)]
   #:init-arch-invariants! [init-arch-invariants! (lambda a (void))]
   #:max-target-size max-target-size
   #:init-ctx init-ctx
@@ -217,7 +219,7 @@
               select-bpf-regs run-jitted-code
               simulate-call supports-pseudocall abstract-regs abstract-tail-call-cnt abstract-return-value
               init-cpu set-cpu-pc!
-              arch-invariants init-arch-invariants!
+              arch-invariants arch-safety init-arch-invariants!
               (bv max-target-size target-bitwidth)
               init-ctx ctx-valid? bpf-to-target-pc code-size
               have-efficient-unaligned-access
@@ -949,6 +951,7 @@
   (define init-cpu (bpf-target-init-cpu target))
   (define max-stack-usage (bpf-target-max-stack-usage target))
   (define arch-invariants (bpf-target-arch-invariants target))
+  (define arch-safety (bpf-target-arch-safety target))
   (define bpf-stack-range (bpf-target-bpf-stack-range target))
   (define abstract-regs (bpf-target-abstract-regs target))
   (define abstract-return-value (bpf-target-abstract-return-value target))
@@ -981,7 +984,7 @@
       (bvule (bpf-prog-aux-stack_depth prog-aux) (bv 512 32))))
 
     (when pre
-      (when (&& (arch-invariants ctx initial-cpu target-cpu #:final #f)
+      (when (&& (arch-invariants ctx initial-cpu target-cpu)
                 (live-regs-equal? liveset (abstract-regs target-cpu) bpf-regs))
 
         (define bpf-return-value (trunc 32 (bpf:reg-ref bpf-cpu BPF_REG_0)))
@@ -990,7 +993,7 @@
         (run-jitted-code target-pc-base target-cpu insns)
         (bug-assert (equal? (abstract-return-value ctx target-cpu) bpf-return-value)
                     #:msg "Return value must match after running epilogue")
-        (bug-assert (arch-invariants ctx initial-cpu target-cpu #:final #t)
+        (bug-assert (arch-safety initial-cpu target-cpu)
                     #:msg "epilogue guarantees must hold after running epilogue")
         (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
                     #:msg "Epilogue must not generate memory trace events")
