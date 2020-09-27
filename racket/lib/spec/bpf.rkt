@@ -176,6 +176,7 @@
   max-stack-usage ; Maximum stack size usage
   bpf-stack-range ; (ctx) -> (bottom x top) representing range of addrs in the BPF stack
   copy-target-cpu ; Make a copy of the target CPU
+  epilogue-offset ; Where is the epilogue in target code
 ))
 
 ; Program input is fp and r1
@@ -213,6 +214,7 @@
   #:have-efficient-unaligned-access [have-efficient-unaligned-access #t]
   #:ctx-valid? [ctx-valid? (lambda a #t)]
   #:function-alignment [function-alignment 1]
+  #:epilogue-offset [epilogue-offset #f]
   #:copy-target-cpu [copy-target-cpu #f])
 
   (bpf-target target-bitwidth emit-insn emit-prologue initial-state? emit-epilogue
@@ -226,7 +228,8 @@
               (bv function-alignment 64)
               max-stack-usage
               bpf-stack-range
-              copy-target-cpu))
+              copy-target-cpu
+              epilogue-offset))
 
 (define max-insn (make-parameter (bv #x1000000 32)))
 
@@ -405,6 +408,7 @@
     (define max-stack-usage (bpf-target-max-stack-usage target))
     (define bpf-stack-range (bpf-target-bpf-stack-range target))
     (define ctx-valid? (bpf-target-ctx-valid? target))
+    (define epilogue-offset (bpf-target-epilogue-offset target))
 
     (define dst (apply choose* (select-bpf-regs 'dst)))
     (define src (apply choose* (select-bpf-regs 'src)))
@@ -615,7 +619,7 @@
           (define final-pc-expected
             (if (bpf:cpu-pc bpf-cpu)
                 (make-target-pc (trunc 32 (bpf:cpu-pc bpf-cpu)))
-                (make-target-pc program-length)))
+                (epilogue-offset target-pc-base ctx)))
 
           (bug-assert (equal? final-pc-expected (core:gen-cpu-pc target-cpu))
                       #:msg "bpf-jit-specification: PCs must match after execution"))))

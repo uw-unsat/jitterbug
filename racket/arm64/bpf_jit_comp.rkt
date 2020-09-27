@@ -18,7 +18,7 @@
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf))
 
-(provide bpf2a64 build_insn context context-offset)
+(provide bpf2a64 build_insn (struct-out context))
 
 (define TMP_REG_1 'tmp-r1)
 (define TMP_REG_2 'tmp-r2)

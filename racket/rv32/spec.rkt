@@ -208,6 +208,7 @@
   #:abstract-return-value (lambda (ctx cpu) (riscv:gpr-ref cpu 'a0))
   #:ctx-valid? riscv-ctx-valid?
   #:copy-target-cpu riscv-copy-cpu
+  #:epilogue-offset riscv-epilogue-offset
 ))
 
 (define (check-jit code)

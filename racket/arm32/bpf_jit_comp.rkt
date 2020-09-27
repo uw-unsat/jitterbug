@@ -20,7 +20,7 @@
   (prefix-in bpf: serval/bpf)
   (prefix-in arm32: serval/arm32))
 
-(provide STACK_SIZE bpf2a32 build_insn context context-stack_size context-offsets is_stacked)
+(provide STACK_SIZE bpf2a32 build_insn (struct-out context) is_stacked)
 
 
 (define STACK_ALIGNMENT (make-parameter 8))

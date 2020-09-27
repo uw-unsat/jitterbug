@@ -28,8 +28,7 @@
 
   (define-symbolic* ninsns (bitvector 32))
 
-  ; The epilogue is at the end of the program.
-  (define epilogue-offset (offsets (bvsub1 program-length)))
+  (define-symbolic* epilogue-offset (bitvector 32))
 
   ; Some stack size
   (define-symbolic* stack_size (bitvector 32))
@@ -38,13 +37,23 @@
                        seen aux))
   ctx)
 
+(define (riscv-epilogue-offset target-pc-base ctx)
+  (define ty (type-of target-pc-base))
+  (define ep (context-epilogue-offset ctx))
+  (bvadd target-pc-base (bvshl (zero-extend ep ty) (bv 1 ty))))
+
 (define (riscv-ctx-valid? ctx insn-idx)
   (define ninsns (context-ninsns ctx))
   (define offset (context-offset ctx))
+  (define epilogue-offset (context-epilogue-offset ctx))
+  (define program-length (context-program-length ctx))
 
   (&&
+
+    (equal? epilogue-offset (offset (bvsub1 program-length)))
+
     (equal? ninsns
-            (if (equal? (bv 0 32) insn-idx)
+            (if (bvzero? insn-idx)
                 (bv 0 32)
                 (offset (bvsub1 insn-idx))))))
 

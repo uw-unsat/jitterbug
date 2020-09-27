@@ -14,16 +14,25 @@
 
 (define (init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
-  (define ninsns
-    (if (equal? (bv 0 32) insn-idx)
-        (bv 0 32)
-        (offsets (bvsub insn-idx (bv 1 32)))))
-  (define epilogue-offset (offsets (bvsub1 program-length)))
+  (define-symbolic* ninsns epilogue-offset (bitvector 32))
 
   (define stack_size (STACK_SIZE aux))
 
   (define ctx (context (vector) ninsns epilogue-offset offsets program-length stack_size aux))
   ctx)
+
+(define (arm32-epilogue-offset target-pc-base ctx)
+  (bvadd target-pc-base (bvshl (context-epilogue-offset ctx) (bv 2 32))))
+
+(define (arm32-ctx-valid? ctx insn-idx)
+  (define offsets (context-offsets ctx))
+  (define program-length (context-program-length ctx))
+  (&&
+      (equal? (context-idx ctx)
+              (if (bvzero? insn-idx)
+                  (bv 0 32)
+                  (offsets (bvsub1 insn-idx))))
+      (equal? (offsets (bvsub1 program-length)) (context-epilogue-offset ctx))))
 
 (define (cpu-abstract-regs cpu)
   (define mm (arm32:cpu-memmgr cpu))
@@ -138,6 +147,8 @@
   #:max-stack-usage arm32-max-stack-usage
   #:max-target-size #x800000
   #:function-alignment 4
+  #:ctx-valid? arm32-ctx-valid?
+  #:epilogue-offset arm32-epilogue-offset
 ))
 
 (define (check-jit code)

@@ -13,10 +13,19 @@
 
 (define (init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
-  (define ninsns (offsets insn-idx))
-  (define epilogue-offset (offsets program-length))
+  (define-symbolic* epilogue-offset ninsns (bitvector 32))
   (define ctx (context (vector) ninsns epilogue-offset offsets program-length))
   ctx)
+
+(define (arm64-epilogue-offset target-pc-base ctx)
+  (define ep (context-epilogue-offset ctx))
+  (bvadd target-pc-base (bvshl (zero-extend ep (bitvector 64)) (bv 2 64))))
+
+(define (arm64-ctx-valid? ctx insn-idx)
+  (define offsets (context-offset ctx))
+  (define program-length (context-program-length ctx))
+  (&& (equal? (context-idx ctx) (offsets insn-idx))
+      (equal? (offsets program-length) (context-epilogue-offset ctx))))
 
 (define (cpu-abstract-regs cpu)
   (apply bpf:regs
@@ -100,6 +109,8 @@
   #:max-stack-usage (lambda (ctx) (bv 128 64))
   #:max-target-size #x100000 ; 2^20
   #:function-alignment 4
+  #:ctx-valid? arm64-ctx-valid?
+  #:epilogue-offset arm64-epilogue-offset
 ))
 
 (define (check-jit code)

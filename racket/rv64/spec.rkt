@@ -104,6 +104,7 @@
   #:have-efficient-unaligned-access #f
   #:function-alignment 2
   #:ctx-valid? riscv-ctx-valid?
+  #:epilogue-offset riscv-epilogue-offset
 ))
 
 (define (check-jit code)
