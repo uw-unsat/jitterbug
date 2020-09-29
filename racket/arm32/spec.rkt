@@ -3,6 +3,7 @@
 (require
   "../lib/bpf-common.rkt"
   "../lib/hybrid-memory.rkt"
+  "../lib/spec/proof.rkt"
   "../lib/spec/bpf.rkt"
   (only-in "bpf_jit.rkt" ARM_FP ARM_SP ARM_LR ARM_R0 ARM_R1)
   "bpf_jit_comp.rkt"

@@ -9,7 +9,7 @@
   (prefix-in core: serval/lib/core)
   "../../lib/hybrid-memory.rkt"
   "../../lib/spec/riscv.rkt"
-  "../../lib/spec/bpf.rkt"
+  "../../lib/spec/proof.rkt"
   "../../lib/riscv-common.rkt")
 
 (define (assert-rvc base-insn emit-fn . args)

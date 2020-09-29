@@ -3,6 +3,7 @@
 (require
   "../lib/bpf-common.rkt"
   "../lib/hybrid-memory.rkt"
+  "../lib/spec/proof.rkt"
   "../lib/spec/bpf.rkt"
   "bpf_jit_comp.rkt"
   (prefix-in core: serval/lib/core)

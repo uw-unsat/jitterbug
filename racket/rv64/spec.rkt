@@ -8,6 +8,7 @@
   "../lib/riscv-common.rkt"
   "../lib/spec/riscv.rkt"
   "../lib/spec/bpf.rkt"
+  "../lib/spec/proof.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/base)

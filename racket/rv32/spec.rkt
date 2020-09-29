@@ -4,6 +4,7 @@
   "bpf_jit_comp32.rkt"
   "../lib/linux.rkt"
   "../lib/spec/bpf.rkt"
+  "../lib/spec/proof.rkt"
   "../lib/riscv-common.rkt"
   "../lib/spec/riscv.rkt"
   "../lib/bpf-common.rkt"

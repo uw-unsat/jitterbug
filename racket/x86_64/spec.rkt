@@ -4,6 +4,7 @@
   "bpf_jit_comp.rkt"
   "../lib/bpf-common.rkt"
   "../lib/hybrid-memory.rkt"
+  "../lib/spec/proof.rkt"
   "../lib/spec/bpf.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
