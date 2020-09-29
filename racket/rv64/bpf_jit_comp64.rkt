@@ -20,7 +20,7 @@
   (prefix-in riscv: serval/riscv/base)
   (prefix-in riscv: serval/riscv/interp))
 
-(provide regmap emit_insn RV_REG_TCC_SAVED)
+(provide regmap emit_insn bpf_jit_build_prologue RV_REG_TCC_SAVED)
 
 (define RV_REG_TCC RV_REG_A6)
 (define RV_REG_TCC_SAVED RV_REG_S6)
@@ -860,3 +860,53 @@
         (emit (rv_amoadd_d RV_REG_ZERO rs rd 0 0) ctx))])
 
   (context-insns ctx))
+
+(define (bpf_jit_build_prologue ctx)
+  (define stack_adjust (bv 0 32))
+  (define bpf_stack_adjust (round_up (->prog->aux->stack_depth ctx) (bv 16 32)))
+
+  ; NB: assume seen_reg = true for now
+  (set! stack_adjust (bvadd stack_adjust (bv (* 8 8) 32)))
+
+  (set! stack_adjust (round_up stack_adjust (bv 16 32)))
+  (set! stack_adjust (bvadd stack_adjust bpf_stack_adjust))
+
+  (define store_offset (bvsub stack_adjust (bv 8 32)))
+
+  ; First instruction is always setting the tail-call-counter
+  ; (TCC) register. This instruction is skipped for tail calls.
+  ; Force using a 4-byte (non-compressed) instruction.
+  (emit (rv_addi RV_REG_TCC RV_REG_ZERO (bv MAX_TAIL_CALL_CNT 32)) ctx)
+
+  (emit_addi RV_REG_SP RV_REG_SP (bvneg stack_adjust) ctx)
+
+  (emit_sd RV_REG_SP store_offset RV_REG_RA ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_sd RV_REG_SP store_offset RV_REG_FP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_sd RV_REG_SP store_offset RV_REG_S1 ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_sd RV_REG_SP store_offset RV_REG_S2 ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_sd RV_REG_SP store_offset RV_REG_S3 ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_sd RV_REG_SP store_offset RV_REG_S4 ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_sd RV_REG_SP store_offset RV_REG_S5 ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_sd RV_REG_SP store_offset RV_REG_S6 ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_addi RV_REG_FP RV_REG_SP stack_adjust ctx)
+
+  (when (! (bvzero? bpf_stack_adjust))
+    (emit_addi RV_REG_S5 RV_REG_SP bpf_stack_adjust ctx))
+
+  (emit_mv RV_REG_TCC_SAVED RV_REG_TCC ctx))

@@ -182,7 +182,7 @@
 ; Program input is fp and r1
 (struct program-input (r1) #:transparent)
 
-(define (bpf-initial-state? ctx input cpu)
+(define (bpf-initial-state? input cpu)
   (equal? (bpf:reg-ref cpu BPF_REG_1) (program-input-r1 input)))
 
 (define emit-insn-split-regs? (make-environment-flag "ENABLE_JIT_SPLIT_REGS" #f))
@@ -190,9 +190,9 @@
 (define (make-bpf-target
   #:target-bitwidth target-bitwidth
   #:emit-insn emit-insn
-  #:emit-prologue [emit-prologue #f]
-  #:initial-state? [initial-state? #f]
-  #:emit-epilogue [emit-epilogue #f]
+  #:emit-prologue [emit-prologue (lambda a (error "emit-prologue not supported by target"))]
+  #:initial-state? [initial-state? (lambda a (error "initial-state not supported by target"))]
+  #:emit-epilogue [emit-epilogue (lambda a (error "emit-epilogue not supported by target"))]
   #:abstract-regs abstract-regs
   #:abstract-tail-call-cnt [abstract-tail-call-cnt (lambda a (bv 0 32))]
   #:abstract-return-value [abstract-return-value #f]
@@ -907,18 +907,21 @@
                                 #:make-callmgr (thunk #f)))
   (bpf:set-cpu-regs! bpf-cpu (struct-copy bpf:regs bpf-regs))
 
+  (define bpf-stack-depth (bpf-prog-aux-stack_depth prog-aux))
+
   ; Construct set of live registers. Only R1 and FP live initially.
-  (define liveset (bpf:regs #f #t #f #f #f #f #f #f #f #f #t #f))
+  ; FP only need be live if stack size is non-zero.
+  (define liveset (bpf:regs #f #t #f #f #f #f #f #f #f #f (! (bvzero? bpf-stack-depth)) #f))
 
   (define pre (&&
     ; Memory manager invariants hold (e.g., stack alignment)
     (core:memmgr-invariants memmgr)
 
     ; Target is initial state
-    (initial-state? ctx input target-cpu)
+    (initial-state? input target-cpu)
 
     ; Source is initial state
-    (bpf-initial-state? ctx input bpf-cpu)
+    (bpf-initial-state? input bpf-cpu)
 
     ; Context pointer upper bits are 0.
     (implies (< target-bitwidth 64)

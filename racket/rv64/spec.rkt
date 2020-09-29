@@ -79,12 +79,35 @@
   (define bpf_stack_depth (bpf-prog-aux-stack_depth aux))
   (set-context-stack_size! ctx
     (zero-extend (bvadd (round_up bpf_stack_depth (bv 16 32)) ; BPF stack size
-                        (bv (* 8 4) 32)) ; Space for saved regs
+                        (bv (* 8 8) 32)) ; Space for saved regs
                  (bitvector 64)))
   ctx)
 
 (define (rv64-max-stack-usage ctx)
   (context-stack_size ctx))
+
+(define (rv64-bpf-stack-range ctx)
+  (define bpf_stack_depth (zero-extend (bpf-prog-aux-stack_depth (context-aux ctx)) (bitvector 64)))
+
+  (define top (bvneg (bv (* 8 8) 64)))
+  (define bottom (bvsub top (round_up bpf_stack_depth (bv 16 64))))
+
+  (cons bottom top))
+
+(define (rv64-initial-state? input cpu)
+  (define pc (riscv:cpu-pc cpu))
+  (define memmgr (riscv:cpu-memmgr cpu))
+  (&&
+    ; PC is aligned.
+    (core:bvaligned? pc (bv 2 (type-of pc)))
+    ; Stack pointer is aligned.
+    (core:bvaligned? (riscv:gpr-ref cpu 'sp) (bv 16 64))
+    ; Stack pointer points to base of stack.
+    (equal? (riscv:gpr-ref cpu 'sp) (hybrid-memmgr-stackbase memmgr))
+
+    ; Program input matches
+    (equal? (rv64_get_bpf_reg cpu BPF_REG_1) (program-input-r1 input))))
+
 
 (define rv64-target (make-bpf-target
   #:target-bitwidth 64
@@ -104,7 +127,13 @@
   #:have-efficient-unaligned-access #f
   #:function-alignment 2
   #:ctx-valid? riscv-ctx-valid?
+  #:copy-target-cpu riscv-copy-cpu
   #:epilogue-offset riscv-epilogue-offset
+  #:bpf-stack-range rv64-bpf-stack-range
+  #:initial-state? rv64-initial-state?
+  #:emit-prologue (lambda (ctx)
+    (parameterize ([CONFIG_RISCV_ISA_C #f]) (bpf_jit_build_prologue ctx)) (context-insns ctx))
+  ;;; #:emit-epilogue (lambda (ctx) (bpf_jit_build_epilogue ctx) (context-insns ctx))
 ))
 
 (define (check-jit code)

@@ -145,7 +145,7 @@
 
 ; Assumptions on state before prologue entry.
 ; Initial state is list of (fp r1)
-(define (rv32-initial-state? ctx input cpu)
+(define (rv32-initial-state? input cpu)
   (define pc (riscv:cpu-pc cpu))
   (define memmgr (riscv:cpu-memmgr cpu))
   (&&
