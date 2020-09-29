@@ -22,6 +22,18 @@
     target-pc-base
     (bvshl (zero-extend (prev-offset bpf-pc) ty) (bv 1 ty))))
 
+(define (riscv-arch-safety Tinitial Tfinal)
+  (define memmgr (riscv:cpu-memmgr Tfinal))
+  (&&
+    ; The stack is restored.
+    (equal? (riscv:gpr-ref Tfinal 'sp) (hybrid-memmgr-stackbase memmgr))
+    ; Callee-save registers are restored.
+    (apply &&
+      (for/list ([reg '(ra gp tp fp s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11)])
+        (equal? (riscv:gpr-ref Tinitial reg)
+                (riscv:gpr-ref Tfinal reg))))))
+
+
 (define (riscv-init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
   (define-symbolic* seen (~> (bitvector 5) boolean?))

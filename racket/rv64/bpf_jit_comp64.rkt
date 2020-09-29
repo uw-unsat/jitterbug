@@ -20,7 +20,7 @@
   (prefix-in riscv: serval/riscv/base)
   (prefix-in riscv: serval/riscv/interp))
 
-(provide regmap emit_insn bpf_jit_build_prologue RV_REG_TCC_SAVED)
+(provide regmap emit_insn bpf_jit_build_prologue bpf_jit_build_epilogue RV_REG_TCC_SAVED)
 
 (define RV_REG_TCC RV_REG_A6)
 (define RV_REG_TCC_SAVED RV_REG_S6)
@@ -909,4 +909,46 @@
   (when (! (bvzero? bpf_stack_adjust))
     (emit_addi RV_REG_S5 RV_REG_SP bpf_stack_adjust ctx))
 
-  (emit_mv RV_REG_TCC_SAVED RV_REG_TCC ctx))
+  (emit_mv RV_REG_TCC_SAVED RV_REG_TCC ctx)
+
+  (set-context-stack_size! ctx stack_adjust))
+
+(define (__build_epilogue is_tail_call ctx)
+  (define stack_adjust (context-stack_size ctx))
+  (define store_offset (bvsub stack_adjust (bv 8 32)))
+
+  (emit_ld RV_REG_RA store_offset RV_REG_SP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_ld RV_REG_FP store_offset RV_REG_SP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_ld RV_REG_S1 store_offset RV_REG_SP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_ld RV_REG_S2 store_offset RV_REG_SP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_ld RV_REG_S3 store_offset RV_REG_SP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_ld RV_REG_S4 store_offset RV_REG_SP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_ld RV_REG_S5 store_offset RV_REG_SP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_ld RV_REG_S6 store_offset RV_REG_SP ctx)
+  (set! store_offset (bvsub store_offset (bv 8 32)))
+
+  (emit_addi RV_REG_SP RV_REG_SP stack_adjust ctx)
+
+  (when (! is_tail_call)
+    (emit_mv RV_REG_A0 RV_REG_A5 ctx))
+
+  (emit_jalr RV_REG_ZERO (if is_tail_call RV_REG_T3 RV_REG_RA)
+                         (if is_tail_call (bv 4 32) (bv 0 32))
+                         ctx))
+
+(define (bpf_jit_build_epilogue ctx)
+  (__build_epilogue #f ctx))

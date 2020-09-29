@@ -1001,7 +1001,7 @@
         (bug-assert (equal? (abstract-return-value ctx target-cpu) bpf-return-value)
                     #:msg "Return value must match after running epilogue")
         (bug-assert (arch-safety initial-cpu target-cpu)
-                    #:msg "epilogue guarantees must hold after running epilogue")
+                    #:msg "Arch safety must hold after running epilogue")
         (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
                     #:msg "Epilogue must not generate memory trace events")
       )))

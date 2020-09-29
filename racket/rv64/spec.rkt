@@ -55,6 +55,14 @@
 
 (define (rv64-arch-invariants ctx initial-cpu cpu)
   (define pc (riscv:cpu-pc cpu))
+  (define aux (context-aux ctx))
+  (define mm (riscv:cpu-memmgr cpu))
+  (define bpf_stack_depth (bpf-prog-aux-stack_depth aux))
+  (define (loadsavedreg off)
+    (core:memmgr-load mm (hybrid-memmgr-stackbase mm)
+                      (bv off 64)
+                      (bv 8 64) #:dbg 'rv64-arch-invariants))
+
   (&&
     ; Upper bits of tail-call counter are sign extension of lower
     (equal? (riscv:gpr-ref cpu RV_REG_TCC_SAVED)
@@ -62,6 +70,22 @@
                          (bitvector 64)))
     ; Program counter is aligned.
     (core:bvaligned? pc (bv 2 (type-of pc)))
+    ; Stack size correct
+    (equal? (context-stack_size ctx)
+      (bvadd (round_up bpf_stack_depth (bv 16 32)) ; BPF stack size
+             (bv (* 8 8) 32))) ; Space for saved regs
+    ; Saved regs correct
+    (equal? (riscv:gpr-ref initial-cpu 'ra) (loadsavedreg (- 8)))
+    (equal? (riscv:gpr-ref initial-cpu 'fp) (loadsavedreg (- 16)))
+    (equal? (riscv:gpr-ref initial-cpu 's1) (loadsavedreg (- 24)))
+    (equal? (riscv:gpr-ref initial-cpu 's2) (loadsavedreg (- 32)))
+    (equal? (riscv:gpr-ref initial-cpu 's3) (loadsavedreg (- 40)))
+    (equal? (riscv:gpr-ref initial-cpu 's4) (loadsavedreg (- 48)))
+    (equal? (riscv:gpr-ref initial-cpu 's5) (loadsavedreg (- 56)))
+    (equal? (riscv:gpr-ref initial-cpu 's6) (loadsavedreg (- 64)))
+    (apply && (for/list ([reg '(gp tp s7 s8 s9 s10 s11)])
+      (equal? (riscv:gpr-ref initial-cpu reg)
+              (riscv:gpr-ref cpu reg))))
     ; Registers have the correct values.
     (apply &&
       (for/list ([inv (rv64-cpu-invariant-registers ctx cpu)])
@@ -72,19 +96,13 @@
   (define stackbase (hybrid-memmgr-stackbase memmgr))
   (list (cons 'fp stackbase)
         (cons 'sp (bvsub stackbase
-                         (context-stack_size ctx)))))
-
-(define (rv64-init-ctx insns-addr insn-idx program-length aux)
-  (define ctx (riscv-init-ctx insns-addr insn-idx program-length aux))
-  (define bpf_stack_depth (bpf-prog-aux-stack_depth aux))
-  (set-context-stack_size! ctx
-    (zero-extend (bvadd (round_up bpf_stack_depth (bv 16 32)) ; BPF stack size
-                        (bv (* 8 8) 32)) ; Space for saved regs
-                 (bitvector 64)))
-  ctx)
+                         (zero-extend (context-stack_size ctx) (bitvector 64))))))
 
 (define (rv64-max-stack-usage ctx)
-  (context-stack_size ctx))
+  (define aux (context-aux ctx))
+  (define bpf_stack_depth (bpf-prog-aux-stack_depth aux))
+  (bvadd (zero-extend (round_up bpf_stack_depth (bv 16 32)) (bitvector 64))
+         (bv (* 8 8) 64)))
 
 (define (rv64-bpf-stack-range ctx)
   (define bpf_stack_depth (zero-extend (bpf-prog-aux-stack_depth (context-aux ctx)) (bitvector 64)))
@@ -119,7 +137,7 @@
   #:init-arch-invariants! rv64-init-arch-invariants!
   #:run-code run-jitted-code
   #:emit-insn emit_insn
-  #:init-ctx rv64-init-ctx
+  #:init-ctx riscv-init-ctx
   #:bpf-to-target-pc bpf-to-target-pc
   #:code-size code-size
   #:max-target-size #x8000000
@@ -131,9 +149,12 @@
   #:epilogue-offset riscv-epilogue-offset
   #:bpf-stack-range rv64-bpf-stack-range
   #:initial-state? rv64-initial-state?
+  #:arch-safety riscv-arch-safety
+  #:abstract-return-value (lambda (ctx cpu) (core:trunc 32 (riscv:gpr-ref cpu 'a0)))
   #:emit-prologue (lambda (ctx)
     (parameterize ([CONFIG_RISCV_ISA_C #f]) (bpf_jit_build_prologue ctx)) (context-insns ctx))
-  ;;; #:emit-epilogue (lambda (ctx) (bpf_jit_build_epilogue ctx) (context-insns ctx))
+  #:emit-epilogue (lambda (ctx)
+    (parameterize ([CONFIG_RISCV_ISA_C #f]) (bpf_jit_build_epilogue ctx)) (context-insns ctx))
 ))
 
 (define (check-jit code)
