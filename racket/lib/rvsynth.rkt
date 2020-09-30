@@ -14,6 +14,7 @@
   "bpf-common.rkt"
   "riscv-common.rkt"
   "spec/bpf.rkt"
+  "spec/per-insn.rkt"
 )
 
 (provide (all-defined-out))
@@ -121,14 +122,14 @@
     (interpret-conditional jit bpf-dst bpf-src bpf-imm ctx)
     (context-insns ctx))
 
-  ; "bpf-jit-specification" will fill s with symbolics it defines,
+  ; "per-insn-correctness" will fill s with symbolics it defines,
   ; this hack lets us use them in the #:forall argument to
   ; synthesize
   (define s null)
 
   ; Get JIT correctness definition.
   (define asserted (with-asserts-only
-    (bpf-jit-specification
+    (per-insn-correctness
       op
       (struct-copy bpf-target target [emit-insn emit_insn]
                                      [select-bpf-regs synthesis-select-bpf-regs])

@@ -10,6 +10,7 @@
   "../../lib/hybrid-memory.rkt"
   "../../lib/spec/riscv.rkt"
   "../../lib/spec/proof.rkt"
+  "../../lib/spec/bpf.rkt"
   "../../lib/riscv-common.rkt")
 
 (define (assert-rvc base-insn emit-fn . args)
