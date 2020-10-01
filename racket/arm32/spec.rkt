@@ -17,7 +17,7 @@
   (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
   (define-symbolic* ninsns epilogue-offset (bitvector 32))
 
-  (define stack_size (STACK_SIZE aux))
+  (define-symbolic* stack_size (bitvector 32))
 
   (define ctx (context (vector) ninsns epilogue-offset offsets program-length stack_size aux))
   ctx)
@@ -27,8 +27,11 @@
 
 (define (arm32-ctx-valid? ctx insn-idx)
   (define offsets (context-offsets ctx))
+  (define aux (context-aux ctx))
   (define program-length (context-program-length ctx))
   (&&
+      (equal? (context-stack_size ctx) (STACK_SIZE aux))
+
       (equal? (context-idx ctx)
               (if (bvzero? insn-idx)
                   (bv 0 32)
