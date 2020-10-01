@@ -20,7 +20,7 @@
   (prefix-in bpf: serval/bpf)
   (prefix-in arm32: serval/arm32))
 
-(provide CONFIG_FRAME_POINTER SCRATCH_SIZE STACK_SIZE bpf2a32 build_prologue build_insn (struct-out context) is_stacked)
+(provide EBPF_SCRATCH_TO_ARM_FP CONFIG_FRAME_POINTER SCRATCH_SIZE STACK_SIZE bpf2a32 build_prologue build_insn (struct-out context) is_stacked)
 
 
 (define STACK_ALIGNMENT (make-parameter 8))
@@ -81,8 +81,10 @@
 (define (STACK_SIZE aux)
   (round_up (_STACK_SIZE aux) (bv (STACK_ALIGNMENT) 32)))
 
-
-(define (EBPF_SCRATCH_TO_ARM_FP x) x)
+(define (EBPF_SCRATCH_TO_ARM_FP x)
+  (if (CONFIG_FRAME_POINTER)
+      (bvsub x (bv (* 4 8) 16) (bv 4 16))
+      x))
 
 (define TMP_REG_1 'tmp1) ; TEMP Register 1
 (define TMP_REG_2 'tmp2) ; TEMP Register 2

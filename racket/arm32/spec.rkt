@@ -7,6 +7,7 @@
   "../lib/spec/bpf.rkt"
   (only-in "bpf_jit.rkt" ARM_FP ARM_SP ARM_LR ARM_R0 ARM_R1)
   "bpf_jit_comp.rkt"
+  "bpf_jit.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in arm32: serval/arm32))
@@ -43,7 +44,10 @@
   (define stackbase (hybrid-memmgr-stackbase mm))
   (define (loadreg i)
     (if (is_stacked i)
-      (core:memmgr-load mm (bvadd (arm32:cpu-gpr-ref cpu ARM_FP) (sign-extend i (bitvector 32))) (bv 0 32) (bv 4 32) #:dbg #f)
+      (core:memmgr-load mm
+                        (bvadd (arm32:cpu-gpr-ref cpu ARM_FP)
+                               (sign-extend (EBPF_SCRATCH_TO_ARM_FP i) (bitvector 32)))
+                        (bv 0 32) (bv 4 32) #:dbg #f)
       (arm32:cpu-gpr-ref cpu i)))
   (apply bpf:regs
     (for/list [(i (in-range MAX_BPF_JIT_REG))]
@@ -88,10 +92,29 @@
   (* 4 (vector-length vec)))
 
 (define (arm32-arch-invariants ctx initial-cpu cpu)
-  (&& (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
-      (apply &&
-        (for/list ([inv (arm32-cpu-invariant-registers ctx cpu)])
-          (equal? (arm32:cpu-gpr-ref cpu (car inv)) (cdr inv))))))
+  (define mm (arm32:cpu-memmgr cpu))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  (define (loadsavedreg off)
+    (core:memmgr-load mm stackbase (bv (- off 4) 32) (bv 4 32) #:dbg 'arm32-arch-invariants))
+
+  (&&
+    ; PC is aligned.
+    (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
+    ; Callee-saved regs on stack.
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_LR) (loadsavedreg (- 4)))
+    ; NB: ARM_IP is saved, but is used before push so the value is not the same as in the initial cpu. Doesn't matter since IP is not callee-saved.
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_FP) (loadsavedreg (- 12)))
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R9) (loadsavedreg (- 16)))
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R8) (loadsavedreg (- 20)))
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R7) (loadsavedreg (- 24)))
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R6) (loadsavedreg (- 28)))
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R5) (loadsavedreg (- 32)))
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R4) (loadsavedreg (- 36)))
+
+    ; Invariant registers hold their values.
+    (apply &&
+      (for/list ([inv (arm32-cpu-invariant-registers ctx cpu)])
+        (equal? (arm32:cpu-gpr-ref cpu (car inv)) (cdr inv))))))
 
 (define (arm32-cpu-invariant-registers ctx cpu)
   (define memmgr (arm32:cpu-memmgr cpu))
