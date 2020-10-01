@@ -20,14 +20,31 @@
   (prefix-in bpf: serval/bpf)
   (prefix-in arm32: serval/arm32))
 
-(provide STACK_SIZE bpf2a32 build_insn (struct-out context) is_stacked)
+(provide CONFIG_FRAME_POINTER SCRATCH_SIZE STACK_SIZE bpf2a32 build_prologue build_insn (struct-out context) is_stacked)
 
 
 (define STACK_ALIGNMENT (make-parameter 8))
 (define use-ldrd/strd (make-parameter #t))
 (define use-rev (make-parameter #t))
 (define use-uxth (make-parameter #t))
+(define CONFIG_FRAME_POINTER (make-parameter #t))
 
+(define CALLEE_MASK
+  (bvor (bvshl (bv 1 32) (bv 4 32))    ; ARM_R4
+        (bvshl (bv 1 32) (bv 5 32))    ; ARM_R5
+        (bvshl (bv 1 32) (bv 6 32))    ; ARM_R6
+        (bvshl (bv 1 32) (bv 7 32))    ; ARM_R7
+        (bvshl (bv 1 32) (bv 8 32))    ; ARM_R8
+        (bvshl (bv 1 32) (bv 9 32))    ; ARM_R9
+        (bvshl (bv 1 32) (bv 11 32)))) ; ARM_FP
+
+(define CALLEE_PUSH_MASK
+  (bvor CALLEE_MASK
+        (bvshl (bv 1 32) (bv 14 32)))) ; ARM_LR
+
+(define CALLEE_POP_MASK
+  (bvor CALLEE_MASK
+        (bvshl (bv 1 32) (bv 15 32)))) ; ARM_PC
 
 ; Stack layout - these are offsets from (top of stack - 4)
 (define BPF_R2_HI 0)
@@ -760,6 +777,50 @@
                       (bvshl (bv 1 16) (zero-extend (unbox (hi rt)) (bitvector 16)))))
 
   (emit (ARM_PUSH reg_set) ctx))
+
+(define (build_prologue ctx)
+  (define aux (context-aux ctx))
+  (define arm_r0 (lo (bpf2a32 BPF_REG_0)))
+  (define bpf_r1 (bpf2a32 BPF_REG_1))
+  (define bpf_fp (bpf2a32 BPF_REG_FP))
+  (define tcc (bpf2a32 TCALL_CNT))
+
+  ; Save callee saved registers.
+  ; NB: assume CONFIG_FRAME_POINTER
+  (cond
+    [(CONFIG_FRAME_POINTER)
+      (define reg_set
+        (bvor CALLEE_PUSH_MASK
+              (bvshl (bv 1 32) (bv 12 32))   ; ARM_IP
+              (bvshl (bv 1 32) (bv 15 32)))) ; ARM_PC
+      (emit (ARM_MOV_R ARM_IP ARM_SP) ctx)
+      (emit (ARM_PUSH (core:trunc 16 reg_set)) ctx)
+      (emit (ARM_SUB_I ARM_FP ARM_IP (bv 4 32)) ctx)]
+    [else
+      (error "not supported")])
+
+  ; mov r3, #0
+  ; sub r2, sp, #SCRATCH_SIZE
+  (emit (ARM_MOV_I (hi bpf_r1) (bv 0 32)) ctx)
+  (emit (ARM_SUB_I (lo bpf_r1) ARM_SP (bv SCRATCH_SIZE 32)) ctx)
+
+  (set-context-stack_size! ctx (imm8m (STACK_SIZE aux)))
+
+  ; Set up function call stack.
+  (emit (ARM_SUB_I ARM_SP ARM_SP (context-stack_size ctx)) ctx)
+
+  ; Set up BPF prog stack base register
+  (emit_a32_mov_r64 #t bpf_fp bpf_r1 ctx)
+
+  ; Initialize Tail Count
+  (emit (ARM_MOV_I (lo bpf_r1) (bv 0 32)) ctx)
+  (emit_a32_mov_r64 #t tcc bpf_r1 ctx)
+
+  ; Move BPF_CTX to BPF_R1
+  (emit (ARM_MOV_R (lo bpf_r1) arm_r0) ctx)
+
+  ; end of prologue
+  (void))
 
 (define (build_insn i insn next-insn ctx)
   (define code (bpf:insn-code insn))

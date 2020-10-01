@@ -112,7 +112,7 @@
   #:supports-pseudocall [supports-pseudocall #t]
   #:run-code run-jitted-code
   #:init-cpu init-cpu
-  #:set-cpu-pc! [set-cpu-pc! #f]
+  #:set-cpu-pc! [set-cpu-pc! (lambda a (error "set-cpu-pc!: not supported"))]
   #:arch-invariants [arch-invariants (lambda a #t)]
   #:arch-safety [arch-safety (lambda a #t)]
   #:init-arch-invariants! [init-arch-invariants! (lambda a (void))]
@@ -126,7 +126,7 @@
   #:ctx-valid? [ctx-valid? (lambda a #t)]
   #:function-alignment [function-alignment 1]
   #:epilogue-offset [epilogue-offset #f]
-  #:copy-target-cpu [copy-target-cpu #f])
+  #:copy-target-cpu [copy-target-cpu (lambda a (error "copy-target-cpu: not supported"))])
 
   (bpf-target target-bitwidth emit-insn emit-prologue initial-state? emit-epilogue
               select-bpf-regs run-jitted-code

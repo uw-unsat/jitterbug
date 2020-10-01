@@ -43,7 +43,7 @@
   (define stackbase (hybrid-memmgr-stackbase mm))
   (define (loadreg i)
     (if (is_stacked i)
-      (core:memmgr-load mm (bvadd stackbase (sign-extend i (bitvector 32))) (bv 0 32) (bv 4 32) #:dbg #f)
+      (core:memmgr-load mm (bvadd (arm32:cpu-gpr-ref cpu ARM_FP) (sign-extend i (bitvector 32))) (bv 0 32) (bv 4 32) #:dbg #f)
       (arm32:cpu-gpr-ref cpu i)))
   (apply bpf:regs
     (for/list [(i (in-range MAX_BPF_JIT_REG))]
@@ -54,8 +54,6 @@
 (define (init-arm32-cpu ctx target-pc memmgr)
   (define arm32-cpu (arm32:init-cpu memmgr))
   (arm32:cpu-pc-set! arm32-cpu target-pc)
-  (for ([inv (arm32-cpu-invariant-registers ctx arm32-cpu)])
-    (arm32:cpu-gpr-set! arm32-cpu (car inv) (cdr inv)))
   arm32-cpu)
 
 (define (run-jitted-code base arm32-cpu insns)
@@ -90,16 +88,21 @@
   (* 4 (vector-length vec)))
 
 (define (arm32-arch-invariants ctx initial-cpu cpu)
-  (apply &&
-    (cons (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
-          (for/list ([inv (arm32-cpu-invariant-registers ctx cpu)])
-            (equal? (arm32:cpu-gpr-ref cpu (car inv)) (cdr inv))))))
+  (&& (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
+      (apply &&
+        (for/list ([inv (arm32-cpu-invariant-registers ctx cpu)])
+          (equal? (arm32:cpu-gpr-ref cpu (car inv)) (cdr inv))))))
 
 (define (arm32-cpu-invariant-registers ctx cpu)
   (define memmgr (arm32:cpu-memmgr cpu))
   (define stackbase (hybrid-memmgr-stackbase memmgr))
-  (list (cons ARM_FP stackbase)
-        (cons ARM_SP (bvsub stackbase (context-stack_size ctx)))))
+  (define scratch-size (bv SCRATCH_SIZE 32))
+  (define aux (context-aux ctx))
+
+  (list (cons ARM_FP (bvsub stackbase (bv 4 32)))
+        (cons ARM_SP (bvsub stackbase
+                            (saved-regs-stack-size)
+                            (STACK_SIZE aux)))))
 
 (define (arm32-init-arch-invariants! ctx arm32-cpu)
   (for ([inv (arm32-cpu-invariant-registers ctx arm32-cpu)])
@@ -131,9 +134,48 @@
   (arm32:cpu-gpr-set! cpu ARM_R1 (extract 63 32 result))
   (arm32:cpu-gpr-set! cpu ARM_R0 (extract 31 0 result)))
 
+(define (saved-regs-stack-size)
+  (if (CONFIG_FRAME_POINTER)
+      (bv (* 4 10) 32)
+      (bv (* 4 8) 32)))
+
 (define (arm32-max-stack-usage ctx)
-  (bvadd (context-stack_size ctx)
-         (bv (* 8 3) 32))) ; Add enough space for pushing BPF_CALL arguments
+  (define aux (context-aux ctx))
+
+  (define call-args (bv (* 3 8) 32))
+
+  (bvadd (saved-regs-stack-size)
+         (STACK_SIZE aux)
+         call-args))
+
+(define (arm32-bpf-stack-range ctx)
+  ; Compute the BPF stack region as offsets from stackbase
+  (define aux (context-aux ctx))
+  (define bpf-stack-depth (bpf-prog-aux-stack_depth aux))
+
+  (define scratch-size (bv SCRATCH_SIZE 32))
+
+  (define top
+    (bvneg
+      (bvadd (saved-regs-stack-size) ; Callee-saved registers
+             scratch-size)))         ; eBPF JIT scratch space
+
+  (define bottom
+    (bvsub top bpf-stack-depth))
+
+  (cons bottom top))
+
+(define (arm32-initial-state? input cpu)
+  (define memmgr (arm32:cpu-memmgr cpu))
+  (&& (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
+      (core:bvaligned? (arm32:cpu-gpr-ref cpu ARM_SP) (bv 8 32))
+      (equal? (arm32:cpu-gpr-ref cpu ARM_R0) (core:trunc 32 (program-input-r1 input)))
+      (equal? (arm32:cpu-gpr-ref cpu ARM_SP) (hybrid-memmgr-stackbase memmgr))))
+
+(define (arm32-copy-cpu cpu)
+  (struct-copy arm32:cpu cpu
+    [rs   (vector-copy (arm32:cpu-rs cpu))]
+    [cpsr (struct-copy arm32:pstate (arm32:cpu-cpsr cpu))]))
 
 (define arm32-target (make-bpf-target
   #:target-bitwidth 32
@@ -153,6 +195,10 @@
   #:function-alignment 4
   #:ctx-valid? arm32-ctx-valid?
   #:epilogue-offset arm32-epilogue-offset
+  #:emit-prologue (lambda (ctx) (build_prologue ctx) (context-target ctx))
+  #:initial-state? arm32-initial-state?
+  #:copy-target-cpu arm32-copy-cpu
+  #:bpf-stack-range arm32-bpf-stack-range
 ))
 
 (define (check-jit code)
