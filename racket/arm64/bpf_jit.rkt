@@ -70,6 +70,9 @@
 (define (A64_STR64 Xt Xn Xm) (A64_LS_REG Xt Xn Xm arm64:str64))
 (define (A64_LDR64 Xt Xn Xm) (A64_LS_REG Xt Xn Xm arm64:ldr64))
 
+; Load/store register pair
+; Rn -= 16; Rn[0] = Rt; Rn[8] = Rt2;
+(define (A64_PUSH Rt Rt2 Rn) (arm64:stp-preindex (bv #b10 2) (bv -16 7) Rt2 Rn Rt))
 
 ; Add/subtract (immediate)
 

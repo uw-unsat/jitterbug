@@ -5,7 +5,9 @@
   "../lib/hybrid-memory.rkt"
   "../lib/spec/proof.rkt"
   "../lib/spec/bpf.rkt"
+  "../lib/linux.rkt"
   "bpf_jit_comp.rkt"
+  "bpf_jit.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in arm64: serval/arm64))
@@ -14,8 +16,8 @@
 
 (define (init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* offsets (~> (bitvector 32) (bitvector 32)))
-  (define-symbolic* epilogue-offset ninsns (bitvector 32))
-  (define ctx (context (vector) ninsns epilogue-offset offsets program-length))
+  (define-symbolic* epilogue-offset stack-size ninsns (bitvector 32))
+  (define ctx (context (vector) ninsns epilogue-offset offsets program-length stack-size aux))
   ctx)
 
 (define (arm64-epilogue-offset target-pc-base ctx)
@@ -68,9 +70,39 @@
 (define (code-size vec)
   (* 4 (vector-length vec)))
 
-(define (arch-invariants ctx initial-cpu cpu)
+(define (arm64-arch-invariants ctx initial-cpu cpu)
   (define pc (arm64:cpu-pc cpu))
-  (core:bvaligned? pc (bv 4 (type-of pc))))
+  (define mm (arm64:cpu-memmgr cpu))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  (define aux (context-aux ctx))
+  (define stack_depth (bpf-prog-aux-stack_depth aux))
+
+  (&&
+    (equal? (arm64:cpu-gpr-ref cpu A64_FP) (bvsub stackbase (bv 16 64)))
+    (equal? (arm64:cpu-gpr-ref cpu A64_SP)
+            (bvsub stackbase
+                   (bv 64 64)
+                   (zero-extend (STACK_ALIGN stack_depth) (bitvector 64))))
+    (core:bvaligned? pc (bv 4 (type-of pc)))))
+
+(define (arm64-arch-safety Tinitial Tfinal)
+  #t)
+
+(define (arm64-max-stack-usage ctx)
+  (define aux (context-aux ctx))
+  (define stack_depth (bpf-prog-aux-stack_depth aux))
+
+  (bvadd (bv 64 64)
+         (zero-extend (STACK_ALIGN stack_depth) (bitvector 64))))
+
+(define (arm64-bpf-stack-range ctx)
+  (define aux (context-aux ctx))
+  (define stack_depth (bpf-prog-aux-stack_depth aux))
+
+  (define top (bvneg (bv 64 64)))
+  (define bottom (bvsub top (zero-extend stack_depth (bitvector 64))))
+
+  (cons bottom top))
 
 (define (arm64-simulate-call cpu call-addr call-fn)
   (define memmgr (arm64:cpu-memmgr cpu))
@@ -100,18 +132,20 @@
   #:target-bitwidth 64
   #:init-cpu init-arm64-cpu
   #:simulate-call arm64-simulate-call
-  #:arch-invariants arch-invariants
+  #:arch-invariants arm64-arch-invariants
   #:abstract-regs cpu-abstract-regs
   #:run-code run-jitted-code
   #:emit-insn build_insn
   #:init-ctx init-ctx
   #:bpf-to-target-pc bpf-to-target-pc
   #:code-size code-size
-  #:max-stack-usage (lambda (ctx) (bv 128 64))
+  #:max-stack-usage arm64-max-stack-usage
   #:max-target-size #x100000 ; 2^20
   #:function-alignment 4
   #:ctx-valid? arm64-ctx-valid?
   #:epilogue-offset arm64-epilogue-offset
+  #:arch-safety arm64-arch-safety
+  #:bpf-stack-range arm64-bpf-stack-range
 ))
 
 (define (check-jit code)

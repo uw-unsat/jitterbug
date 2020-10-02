@@ -18,10 +18,11 @@
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf))
 
-(provide bpf2a64 build_insn (struct-out context))
+(provide (all-defined-out))
 
 (define TMP_REG_1 'tmp-r1)
 (define TMP_REG_2 'tmp-r2)
+(define TCALL_CNT 'tcc)
 (define TMP_REG_3 'tmp-r3)
 
 (define regmap (list
@@ -44,6 +45,8 @@
   (cons TMP_REG_1 (A64_R 10))
   (cons TMP_REG_2 (A64_R 11))
   (cons TMP_REG_3 (A64_R 12))
+  ; tail_call_cnt
+  (cons TCALL_CNT (A64_R 26))
   ; temporary register for blinding constants
   (cons BPF_REG_AX (A64_R 9))
 ))
@@ -53,7 +56,7 @@
   (assert e (format "unknown BPF register: ~a" r))
   (cdr e))
 
-(struct context (insns idx epilogue-offset offset program-length) #:mutable #:transparent)
+(struct context (insns idx epilogue-offset offset program-length stack-size aux) #:mutable #:transparent)
 
 (define (emit insn ctx)
   (for/all ([insns (context-insns ctx) #:exhaustive])
@@ -183,6 +186,38 @@
   ; optionally shifted imm12
   (|| (bvzero? (bvand imm (bvnot (bv #xfff 32))))
       (bvzero? (bvand imm (bvnot (bv #xfff000 32))))))
+
+(define (STACK_ALIGN sz)
+  (bvand (bvadd sz (bv 15 (type-of sz)))
+         (bvnot (bv 15 (type-of sz)))))
+
+(define (build_prologue ctx ebpf_from_cbpf)
+  (define aux (context-aux ctx))
+  (define stack_depth (bpf-prog-aux-stack_depth aux))
+
+  (define r6 (bpf2a64 BPF_REG_6))
+  (define r7 (bpf2a64 BPF_REG_7))
+  (define r8 (bpf2a64 BPF_REG_8))
+  (define r9 (bpf2a64 BPF_REG_9))
+  (define fp (bpf2a64 BPF_REG_FP))
+  (define tcc (bpf2a64 TCALL_CNT))
+
+  ; Save FP and LR registers to stay align with ARM64 AAPCS
+  (emit (A64_PUSH A64_FP A64_LR A64_SP) ctx)
+  (emit (A64_MOV (bv 1 1) A64_FP A64_SP) ctx)
+
+  ; Save callee-saved registers
+  (emit (A64_PUSH r6 r7 A64_SP) ctx)
+  (emit (A64_PUSH r8 r9 A64_SP) ctx)
+  (emit (A64_PUSH fp tcc A64_SP) ctx)
+
+  (emit (A64_MOV (bv 1 1) fp A64_SP) ctx)
+
+  (set-context-stack-size! ctx (STACK_ALIGN stack_depth))
+
+  ; Set up function call stack
+  (emit (A64_SUB_I (bv 1 1) A64_SP A64_SP (context-stack-size ctx)) ctx)
+  (void))
 
 (define (emit_cond_jmp code i off ctx)
   (define off32 (sign-extend off (bitvector 32)))
