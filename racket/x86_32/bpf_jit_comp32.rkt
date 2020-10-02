@@ -17,15 +17,11 @@
   "../lib/bpf-common.rkt"
   "../lib/patch.rkt"
   "../lib/linux.rkt"
+  "../lib/x86-common.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf))
 
 (provide (all-defined-out))
-
-(define (static-assert expr msg)
-  (unless expr
-    (eprintf "static assertion failed: ~a\n" msg)
-    (exit 1)))
 
 (define current-context (make-parameter #f))
 
@@ -150,17 +146,27 @@
 ; Encode 'dst_reg' register into IA32 opcode 'byte'
 (define (add_1reg byte dst_reg)
   (set! byte (bv byte 8))
+  (set! dst_reg (unbox dst_reg))
   (static-assert (bvzero? (extract 2 0 byte)) "add_1reg: lowest 3 bits must be clear")
-  (concat (extract 7 3 byte)
-          (unbox dst_reg)))
+  (define r (core:trunc 8 (bvadd (zero-extend byte (bitvector 32))
+                                 (zero-extend dst_reg (bitvector 32)))))
+  (simplify-with r #:msg "add_1reg"
+    (concat (extract 7 3 byte)
+            dst_reg)))
 
 ; Encode 'dst_reg' and 'src_reg' registers into IA32 opcode 'byte'
 (define (add_2reg byte dst_reg src_reg)
   (set! byte (bv byte 8))
+  (set! dst_reg (unbox dst_reg))
+  (set! src_reg (unbox src_reg))
+  (define r (core:trunc 8 (bvadd (zero-extend byte (bitvector 32))
+                                 (zero-extend dst_reg (bitvector 32))
+                                 (bvshl (zero-extend src_reg (bitvector 32)) (bv 3 32)))))
   (static-assert (bvzero? (extract 5 0 byte)) "add_2reg: lowest 6 bits must be clear")
-  (concat (extract 7 6 byte)
-          (unbox src_reg)
-          (unbox dst_reg)))
+  (simplify-with r #:msg "add_2reg"
+    (concat (extract 7 6 byte)
+            src_reg
+            dst_reg)))
 
 
 (define (emit_ia32_mov_i dst val dstk pprog)

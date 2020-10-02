@@ -13,6 +13,7 @@
 (require
   "../lib/bpf-common.rkt"
   "../lib/bvaxiom.rkt"
+  "../lib/x86-common.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in x86: serval/x86))
@@ -20,11 +21,6 @@
 (provide emit_insn is_ereg reg2hex context context-offset)
 
 (define current-context (make-parameter #f))
-
-(define (static-assert expr msg)
-  (unless expr
-    (eprintf "static assertion failed: ~a" msg)
-    (exit 1)))
 
 (struct context (insns offset len image) #:mutable #:transparent)
 
@@ -143,7 +139,10 @@
 ; Add modifiers if 'reg' maps to x86-64 registers R8..R15
 (define (add_1mod byte reg)
   (set! byte (bv byte 8))
-  (static-assert (bvzero? (bit 0 byte)) "lowest bit can be clear")
+  (static-assert (bvzero? (bit 0 byte)) "lowest bit must be clear")
+  (define r byte)
+  (when (is_ereg reg)
+    (set! r (bvor r (bv 1 8))))
   ; Splitting for [AND|OR|XOR]-K to concretize the REX prefix.
   ; The problem is the following:
   ; - the JIT emits the (symbolic) REX prefix _first_;
@@ -156,31 +155,45 @@
   ; be only two cases for the REX prefix.
   ;
   ; We don't do similar things for add_2mod as it's not needed.
-  (for/all ([b (bool->bitvector (is_ereg reg)) #:exhaustive])
-    (concat (extract 7 1 byte) b)))
+  (simplify-with r #:msg "add_1mod"
+    (for/all ([b (bool->bitvector (is_ereg reg)) #:exhaustive])
+      (concat (extract 7 1 byte) b))))
 
 (define (add_2mod byte r1 r2)
   (set! byte (bv byte 8))
-  (static-assert (bvzero? (extract 2 0 byte)) "lowest 3 bits can be clear")
-  (concat (extract 7 3 byte)
-          (bool->bitvector (is_ereg r2))   ; R
-          (bv #b0 1)                       ; X
-          (bool->bitvector (is_ereg r1)))) ; B
+  (static-assert (bvzero? (extract 2 0 byte)) "lowest 3 bits must be clear")
+  (define r byte)
+  (when (is_ereg r1)
+    (set! r (bvor r (bv 1 8))))
+  (when (is_ereg r2)
+    (set! r (bvor r (bv 4 8))))
+  (simplify-with r #:msg "add_2mod"
+    (concat (extract 7 3 byte)
+            (bool->bitvector (is_ereg r2))    ; R
+            (bv #b0 1)                        ; X
+            (bool->bitvector (is_ereg r1))))) ; B
 
 ; Encode 'dst_reg' register into x86-64 opcode 'byte'
 (define (add_1reg byte dst_reg)
   (set! byte (bv byte 8))
   (static-assert (bvzero? (extract 2 0 byte)) "lowest 3 bits must be clear")
-  (concat (extract 7 3 byte)
-          (reg2hex dst_reg)))
+  (define r (core:trunc 8 (bvadd (zero-extend byte (bitvector 32))
+                                 (zero-extend (reg2hex dst_reg) (bitvector 32)))))
+  (simplify-with r #:msg "add_1reg"
+    (concat (extract 7 3 byte)
+            (reg2hex dst_reg))))
 
 ; Encode 'dst_reg' and 'src_reg' registers into x86-64 opcode 'byte'
 (define (add_2reg byte dst_reg src_reg)
   (set! byte (bv byte 8))
   (static-assert (bvzero? (extract 5 0 byte)) "lowest 6 bits must be clear")
-  (concat (extract 7 6 byte)
-          (reg2hex src_reg)
-          (reg2hex dst_reg)))
+  (define r (core:trunc 8 (bvadd (zero-extend byte (bitvector 32))
+                                 (zero-extend (reg2hex dst_reg) (bitvector 32))
+                                 (bvshl (zero-extend (reg2hex src_reg) (bitvector 32)) (bv 3 32)))))
+  (simplify-with r #:msg "add_2reg"
+    (concat (extract 7 6 byte)
+            (reg2hex src_reg)
+            (reg2hex dst_reg))))
 
 (define X86_PATCH_SIZE 5)
 
