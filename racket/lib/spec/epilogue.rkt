@@ -56,14 +56,14 @@
       (bvule (bpf-prog-aux-stack_depth prog-aux) (bv 512 32))))
 
     (when pre
-      (when (&& (arch-invariants ctx initial-cpu target-cpu)
-                (live-regs-equal? liveset (abstract-regs target-cpu) bpf-regs))
+      (when (and (arch-invariants ctx initial-cpu target-cpu)
+                 (live-regs-equal? liveset (abstract-regs target-cpu) bpf-regs))
 
         (define bpf-return-value (trunc 32 (bpf:reg-ref bpf-cpu BPF_REG_0)))
         (define insns (emit-epilogue ctx))
 
         (run-jitted-code target-pc-base target-cpu insns)
-        (bug-assert (equal? (abstract-return-value ctx target-cpu) bpf-return-value)
+        (bug-assert (equal? (abstract-return-value target-cpu) bpf-return-value)
                     #:msg "Return value must match after running epilogue")
         (bug-assert (arch-safety initial-cpu target-cpu)
                     #:msg "Arch safety must hold after running epilogue")

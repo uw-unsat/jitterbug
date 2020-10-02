@@ -100,6 +100,8 @@
   (&&
     ; PC is aligned.
     (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
+    ; SP is aligned
+    (core:bvaligned? (arm32:cpu-gpr-ref cpu ARM_SP) (bv 4 32))
     ; Callee-saved regs on stack.
     (equal? (arm32:cpu-gpr-ref initial-cpu ARM_LR) (loadsavedreg (- 4)))
     ; NB: ARM_IP is saved, but is used before push so the value is not the same as in the initial cpu. Doesn't matter since IP is not callee-saved.
@@ -110,6 +112,9 @@
     (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R6) (loadsavedreg (- 28)))
     (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R5) (loadsavedreg (- 32)))
     (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R4) (loadsavedreg (- 36)))
+
+    ; Unused callee-save registers do not change values.
+    (equal? (arm32:cpu-gpr-ref initial-cpu ARM_R10) (arm32:cpu-gpr-ref cpu ARM_R10))
 
     ; Invariant registers hold their values.
     (apply &&
@@ -200,6 +205,16 @@
     [rs   (vector-copy (arm32:cpu-rs cpu))]
     [cpsr (struct-copy arm32:pstate (arm32:cpu-cpsr cpu))]))
 
+(define (arm32-arch-safety Tinitial Tfinal)
+  (&&
+    ; Return address is correct.
+    (equal? (bvand (bvnot (bv 1 32)) (arm32:cpu-gpr-ref Tinitial ARM_LR))
+            (bvsub (arm32:cpu-pc Tfinal) (bv 4 32)))
+    ; Callee-saved registers restored.
+    (apply &&
+      (for/list ([reg (list ARM_R4 ARM_R5 ARM_R6 ARM_R7 ARM_R8 ARM_R9 ARM_R10 ARM_FP)])
+        (equal? (arm32:cpu-gpr-ref Tinitial reg) (arm32:cpu-gpr-ref Tfinal reg))))))
+
 (define arm32-target (make-bpf-target
   #:target-bitwidth 32
   #:init-cpu init-arm32-cpu
@@ -219,9 +234,12 @@
   #:ctx-valid? arm32-ctx-valid?
   #:epilogue-offset arm32-epilogue-offset
   #:emit-prologue (lambda (ctx) (build_prologue ctx) (context-target ctx))
+  #:emit-epilogue (lambda (ctx) (build_epilogue ctx) (context-target ctx))
   #:initial-state? arm32-initial-state?
   #:copy-target-cpu arm32-copy-cpu
   #:bpf-stack-range arm32-bpf-stack-range
+  #:arch-safety arm32-arch-safety
+  #:abstract-return-value (lambda (cpu) (arm32:cpu-gpr-ref cpu ARM_R0))
 ))
 
 (define (check-jit code)

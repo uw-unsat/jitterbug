@@ -151,7 +151,7 @@
   #:bpf-stack-range rv64-bpf-stack-range
   #:initial-state? rv64-initial-state?
   #:arch-safety riscv-arch-safety
-  #:abstract-return-value (lambda (ctx cpu) (core:trunc 32 (riscv:gpr-ref cpu 'a0)))
+  #:abstract-return-value (lambda (cpu) (core:trunc 32 (riscv:gpr-ref cpu 'a0)))
   #:emit-prologue (lambda (ctx)
     (parameterize ([CONFIG_RISCV_ISA_C #f]) (bpf_jit_build_prologue ctx)) (context-insns ctx))
   #:emit-epilogue (lambda (ctx)

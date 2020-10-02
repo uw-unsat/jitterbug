@@ -83,6 +83,8 @@
 (define (ARM_EOR_R rd rn rm) (_AL3_R arm32:eor-register rd rn rm))
 (define (ARM_EOR_I rd rn imm) (_AL3_I arm32:eor-immediate rd rn imm))
 
+(define (ARM_LDM rn regs) (arm32:ldmia (bv 1 1) rn regs))
+
 (define (ARM_LSL_R rd rn rm) (ARM_MOV_SR rd rn SRTYPE_LSL rm))
 (define (ARM_LSL_I rd rn imm) (arm32:lsl-immediate rd (extract 4 0 imm) rn))
 

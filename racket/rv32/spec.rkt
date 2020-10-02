@@ -190,7 +190,7 @@
   #:have-efficient-unaligned-access #f
   #:bpf-stack-range rv32-bpf-stack-range
   #:function-alignment 4
-  #:abstract-return-value (lambda (ctx cpu) (riscv:gpr-ref cpu 'a0))
+  #:abstract-return-value (lambda (cpu) (riscv:gpr-ref cpu 'a0))
   #:ctx-valid? riscv-ctx-valid?
   #:copy-target-cpu riscv-copy-cpu
   #:epilogue-offset riscv-epilogue-offset

@@ -20,8 +20,7 @@
   (prefix-in bpf: serval/bpf)
   (prefix-in arm32: serval/arm32))
 
-(provide EBPF_SCRATCH_TO_ARM_FP CONFIG_FRAME_POINTER SCRATCH_SIZE STACK_SIZE bpf2a32 build_prologue build_insn (struct-out context) is_stacked)
-
+(provide (all-defined-out))
 
 (define STACK_ALIGNMENT (make-parameter 8))
 (define use-ldrd/strd (make-parameter #t))
@@ -29,22 +28,31 @@
 (define use-uxth (make-parameter #t))
 (define CONFIG_FRAME_POINTER (make-parameter #t))
 
+(define (hweight16 val)
+  (for/all ([val val #:exhaustive])
+    (begin
+      (define weight (bv 0 16))
+      (for ([i (in-range 16)])
+        (when (equal? (bit i val) (bv 1 1))
+          (set! weight (bvadd1 weight))))
+      weight)))
+
 (define CALLEE_MASK
-  (bvor (bvshl (bv 1 32) (bv 4 32))    ; ARM_R4
-        (bvshl (bv 1 32) (bv 5 32))    ; ARM_R5
-        (bvshl (bv 1 32) (bv 6 32))    ; ARM_R6
-        (bvshl (bv 1 32) (bv 7 32))    ; ARM_R7
-        (bvshl (bv 1 32) (bv 8 32))    ; ARM_R8
-        (bvshl (bv 1 32) (bv 9 32))    ; ARM_R9
-        (bvshl (bv 1 32) (bv 11 32)))) ; ARM_FP
+  (bvor (bvshl (bv 1 16) (bv 4 16))    ; ARM_R4
+        (bvshl (bv 1 16) (bv 5 16))    ; ARM_R5
+        (bvshl (bv 1 16) (bv 6 16))    ; ARM_R6
+        (bvshl (bv 1 16) (bv 7 16))    ; ARM_R7
+        (bvshl (bv 1 16) (bv 8 16))    ; ARM_R8
+        (bvshl (bv 1 16) (bv 9 16))    ; ARM_R9
+        (bvshl (bv 1 16) (bv 11 16)))) ; ARM_FP
 
 (define CALLEE_PUSH_MASK
   (bvor CALLEE_MASK
-        (bvshl (bv 1 32) (bv 14 32)))) ; ARM_LR
+        (bvshl (bv 1 16) (bv 14 16)))) ; ARM_LR
 
 (define CALLEE_POP_MASK
   (bvor CALLEE_MASK
-        (bvshl (bv 1 32) (bv 15 32)))) ; ARM_PC
+        (bvshl (bv 1 16) (bv 15 16)))) ; ARM_PC
 
 ; Stack layout - these are offsets from (top of stack - 4)
 (define BPF_R2_HI 0)
@@ -83,7 +91,7 @@
 
 (define (EBPF_SCRATCH_TO_ARM_FP x)
   (if (CONFIG_FRAME_POINTER)
-      (bvsub x (bv (* 4 8) 16) (bv 4 16))
+      (bvsub x (bvmul (bv 4 16) (hweight16 CALLEE_PUSH_MASK)) (bv 4 16))
       x))
 
 (define TMP_REG_1 'tmp1) ; TEMP Register 1
@@ -793,10 +801,10 @@
     [(CONFIG_FRAME_POINTER)
       (define reg_set
         (bvor CALLEE_PUSH_MASK
-              (bvshl (bv 1 32) (bv 12 32))   ; ARM_IP
-              (bvshl (bv 1 32) (bv 15 32)))) ; ARM_PC
+              (bvshl (bv 1 16) (bv 12 16))   ; ARM_IP
+              (bvshl (bv 1 16) (bv 15 16)))) ; ARM_PC
       (emit (ARM_MOV_R ARM_IP ARM_SP) ctx)
-      (emit (ARM_PUSH (core:trunc 16 reg_set)) ctx)
+      (emit (ARM_PUSH reg_set) ctx)
       (emit (ARM_SUB_I ARM_FP ARM_IP (bv 4 32)) ctx)]
     [else
       (error "not supported")])
@@ -823,6 +831,19 @@
 
   ; end of prologue
   (void))
+
+; restore callee saved registers
+(define (build_epilogue ctx)
+  (cond
+    [(CONFIG_FRAME_POINTER)
+      (define reg_set
+        (bvor CALLEE_POP_MASK
+              (bvshl (bv 1 16) (bv 13 16)))) ; ARM_SP
+
+      (emit (ARM_SUB_I ARM_SP ARM_FP (bvmul (bv 4 32) (zero-extend (hweight16 reg_set) (bitvector 32)))) ctx)
+      (emit (ARM_LDM ARM_SP reg_set) ctx)]
+    [else
+      (error "not supported")]))
 
 (define (build_insn i insn next-insn ctx)
   (define code (bpf:insn-code insn))
