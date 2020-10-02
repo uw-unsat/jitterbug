@@ -24,7 +24,11 @@
 
 (define (riscv-arch-safety Tinitial Tfinal)
   (define memmgr (riscv:cpu-memmgr Tfinal))
+  (define xlen (riscv:cpu-xlen Tinitial))
   (&&
+    ; Return address is correct.
+    (equal? (bvand (bvnot (bv 1 xlen)) (riscv:gpr-ref Tinitial 'ra))
+            (riscv:cpu-pc Tfinal))
     ; The stack is restored.
     (equal? (riscv:gpr-ref Tfinal 'sp) (hybrid-memmgr-stackbase memmgr))
     ; Callee-save registers are restored.
