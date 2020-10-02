@@ -29,13 +29,11 @@
  *                         high
  * original ARM_SP =>     +-----+
  *                        |     | callee saved registers
- *                        +-----+ <= (BPF_FP + SCRATCH_SIZE)
- *                        | ... | eBPF JIT scratch space
- * eBPF fp register =>    +-----+
- *   (BPF_FP)             | ... | eBPF prog stack
- *                        +-----+
- *                        |RSVD | JIT scratchpad
- * current ARM_SP =>      +-----+ <= (BPF_FP - STACK_SIZE + SCRATCH_SIZE)
+ *                        +-----+ <= (BPF_FP + SCRATCH_SIZE) ------------------------\
+ *                        | ... | eBPF JIT scratch space                             |
+ * eBPF fp register =>    +-----+                                                    } STACK_SIZE
+ *   (BPF_FP)             | ... | eBPF prog stack                                    |
+ * current ARM_SP =>      +-----+ <= (BPF_FP - ALIGN(stack_depth, STACK_ALIGNMENT)) -/
  *                        |     |
  *                        | ... | Function call stack
  *                        |     |
