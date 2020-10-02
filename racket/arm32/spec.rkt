@@ -5,7 +5,6 @@
   "../lib/hybrid-memory.rkt"
   "../lib/spec/proof.rkt"
   "../lib/spec/bpf.rkt"
-  "../lib/linux.rkt"
   (only-in "bpf_jit.rkt" ARM_FP ARM_SP ARM_LR ARM_R0 ARM_R1)
   "bpf_jit_comp.rkt"
   "bpf_jit.rkt"
@@ -40,7 +39,7 @@
                   (offsets (bvsub1 insn-idx))))
       (equal? (offsets (bvsub1 program-length)) (context-epilogue-offset ctx))))
 
-(define (arm32-get-bpf-reg cpu reg)
+(define (cpu-abstract-regs cpu)
   (define mm (arm32:cpu-memmgr cpu))
   (define stackbase (hybrid-memmgr-stackbase mm))
   (define (loadreg i)
@@ -50,14 +49,11 @@
                                (sign-extend (EBPF_SCRATCH_TO_ARM_FP i) (bitvector 32)))
                         (bv 0 32) (bv 4 32) #:dbg #f)
       (arm32:cpu-gpr-ref cpu i)))
-
-  (define p (bpf2a32 reg))
-  (concat (loadreg (car p)) (loadreg (cdr p))))
-
-(define (cpu-abstract-regs cpu)
   (apply bpf:regs
     (for/list [(i (in-range MAX_BPF_JIT_REG))]
-      (arm32-get-bpf-reg cpu (bpf:idx->reg i)))))
+      (define k (bpf:idx->reg i))
+      (define p (bpf2a32 k))
+      (concat (loadreg (car p)) (loadreg (cdr p))))))
 
 (define (init-arm32-cpu ctx target-pc memmgr)
   (define arm32-cpu (arm32:init-cpu memmgr))
@@ -100,21 +96,8 @@
   (define stackbase (hybrid-memmgr-stackbase mm))
   (define (loadsavedreg off)
     (core:memmgr-load mm stackbase (bv (- off 4) 32) (bv 4 32) #:dbg 'arm32-arch-invariants))
-  (define aux (context-aux ctx))
-
-  (define bpf-fp (core:trunc 32 (arm32-get-bpf-reg cpu BPF_REG_FP)))
 
   (&&
-    ; These invariants are not required for verification, but prove that the
-    ; stack layout diagram in the JIT implementation is correct.
-    (equal? (bvsub bpf-fp
-                   (round_up (bpf-prog-aux-stack_depth aux) (bv 8 32)))
-            (arm32:cpu-gpr-ref cpu ARM_SP))
-
-    (equal? (bvsub (bvadd bpf-fp (bv SCRATCH_SIZE 32))
-                   (arm32:cpu-gpr-ref cpu ARM_SP))
-            (STACK_SIZE aux))
-
     ; PC is aligned.
     (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
     ; SP is aligned
