@@ -72,7 +72,7 @@
 
 ; Load/store register pair
 ; Rn -= 16; Rn[0] = Rt; Rn[8] = Rt2;
-(define (A64_PUSH Rt Rt2 Rn) (arm64:stp-preindex (bv #b10 2) (bv -16 7) Rt2 Rn Rt))
+(define (A64_PUSH Rt Rt2 Rn) (arm64:stp-preindex (bv #b10 2) (bv -2 7) Rt2 Rn Rt))
 
 ; Add/subtract (immediate)
 

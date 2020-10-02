@@ -78,8 +78,9 @@
   (define stack_depth (bpf-prog-aux-stack_depth aux))
 
   (&&
+    (equal? (context-stack-size ctx) (STACK_ALIGN stack_depth))
     (equal? (arm64:cpu-gpr-ref cpu A64_FP) (bvsub stackbase (bv 16 64)))
-    (equal? (arm64:cpu-gpr-ref cpu A64_SP)
+    (equal? (arm64:cpu-sp-ref cpu)
             (bvsub stackbase
                    (bv 64 64)
                    (zero-extend (STACK_ALIGN stack_depth) (bitvector 64))))
@@ -92,8 +93,7 @@
   (define aux (context-aux ctx))
   (define stack_depth (bpf-prog-aux-stack_depth aux))
 
-  (bvadd (bv 64 64)
-         (zero-extend (STACK_ALIGN stack_depth) (bitvector 64))))
+  (bvadd (bv 64 64) (zero-extend (STACK_ALIGN stack_depth) (bitvector 64))))
 
 (define (arm64-bpf-stack-range ctx)
   (define aux (context-aux ctx))
@@ -128,6 +128,20 @@
   ; Set result to r0.
   (arm64:cpu-gpr-set! cpu (arm64:integer->gpr 0) result))
 
+(define (arm64-copy-cpu cpu)
+  (struct-copy arm64:cpu cpu
+    [xn   (vector-copy (arm64:cpu-xn cpu))]
+    [nzcv (struct-copy arm64:nzcv (arm64:cpu-nzcv cpu))]))
+
+(define (arm64-initial-state? input cpu)
+  (define mm (arm64:cpu-memmgr cpu))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  (&&
+    (core:bvaligned? (arm64:cpu-pc cpu) (bv 4 64))
+    (core:bvaligned? (arm64:cpu-sp-ref cpu) (bv 16 64))
+    (equal? (arm64:cpu-sp-ref cpu) stackbase)
+    (equal? (arm64:cpu-gpr-ref cpu (bpf2a64 BPF_REG_1)) (program-input-r1 input))))
+
 (define arm64-target (make-bpf-target
   #:target-bitwidth 64
   #:init-cpu init-arm64-cpu
@@ -146,6 +160,9 @@
   #:epilogue-offset arm64-epilogue-offset
   #:arch-safety arm64-arch-safety
   #:bpf-stack-range arm64-bpf-stack-range
+  #:emit-prologue (lambda (ctx) (build_prologue ctx #f) (context-insns ctx))
+  #:copy-target-cpu arm64-copy-cpu
+  #:initial-state? arm64-initial-state?
 ))
 
 (define (check-jit code)
