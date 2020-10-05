@@ -147,6 +147,7 @@
   (define stack_depth (bpf-prog-aux-stack_depth aux))
 
   (bvadd (bv (* 8 6) 64) ; 5 pushed registers + return address.
+         (bv 8 64) ; Return address for next function.
          (zero-extend (round_up stack_depth (bv 8 32)) (bitvector 64))))
 
 (define (x86_64-bpf-stack-range ctx)

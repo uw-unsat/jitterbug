@@ -2,6 +2,7 @@
 
 (require
   "patch.rkt"
+  "hybrid-memory.rkt"
   serval/lib/solver
   serval/lib/unittest)
 
@@ -191,10 +192,11 @@
       jit-verify-case))
 
 (define (verify-jmp-call name proc #:selector [selector skip-tail-call])
-  (jit-verify name proc selector
-    '(BPF_JMP BPF_CALL)
-    '(BPF_JMP BPF_TAIL_CALL)
-    '(BPF_JMP BPF_EXIT)))
+  (parameterize ([enable-stack-addr-symopt #f])
+    (jit-verify name proc selector
+      '(BPF_JMP BPF_CALL)
+      '(BPF_JMP BPF_TAIL_CALL)
+      '(BPF_JMP BPF_EXIT))))
 
 (define (verify-ld-imm name proc #:selector [selector verify-all])
   (jit-verify name proc selector
