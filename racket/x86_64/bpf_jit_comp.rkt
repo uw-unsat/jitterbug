@@ -14,15 +14,16 @@
   "../lib/bpf-common.rkt"
   "../lib/bvaxiom.rkt"
   "../lib/x86-common.rkt"
+  "../lib/linux.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in x86: serval/x86))
 
-(provide emit_insn is_ereg reg2hex context context-offset)
+(provide emit_insn emit_prologue emit_epilogue is_ereg reg2hex (struct-out context))
 
 (define current-context (make-parameter #f))
 
-(struct context (insns offset len image) #:mutable #:transparent)
+(struct context (insns offset len image aux) #:mutable #:transparent)
 
 (define (emit_code ctx lst)
   (define size (bv (length lst) 32))
@@ -196,6 +197,32 @@
             (reg2hex dst_reg))))
 
 (define X86_PATCH_SIZE 5)
+
+(define (emit_prologue ctx stack_depth ebpf_from_cbpf)
+  ; NB: Ignore the nops at the beginning for trampoline code.
+  (parameterize ([current-context ctx])
+    (EMIT1 #x55)           ; push rbp
+    (EMIT3 #x48 #x89 #xE5) ; mov rbp, rsp
+    ; sub rsp, rounded_stack_depth
+    (EMIT3_off32 #x48 #x81 #xEC (round_up stack_depth (bv 8 32)))
+    (EMIT1 #x53)           ; push rbx
+    (EMIT2 #x41 #x55)      ; push r13
+    (EMIT2 #x41 #x56)      ; push r14
+    (EMIT2 #x41 #x57)      ; push r15
+    (when (! ebpf_from_cbpf)
+      ; zero init tail_call_cnt
+      (EMIT2 #x6A #x00))
+    (void)))
+
+(define (emit_epilogue ctx)
+  (parameterize ([current-context ctx])
+    (EMIT2 #x41 #x5F) ; pop r15
+    (EMIT2 #x41 #x5E) ; pop r14
+    (EMIT2 #x41 #x5D) ; pop r13
+    (EMIT1 #x5B)      ; pop rbx
+    (EMIT1 #xC9)      ; leave
+    (EMIT1 #xC3)      ; ret
+    (void)))
 
 (define (emit_patch pprog func ip opcode)
   (define offset (bvsub func (bvadd ip (bv X86_PATCH_SIZE 64))))

@@ -6,6 +6,7 @@
   "../lib/hybrid-memory.rkt"
   "../lib/spec/proof.rkt"
   "../lib/spec/bpf.rkt"
+  "../lib/linux.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in x86: serval/x86))
@@ -20,7 +21,7 @@
 (define (init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* addrs (~> (bitvector 32) (bitvector 32)))
   (define-symbolic* len (bitvector 32))
-  (define ctx (context (vector) addrs len insns-addr))
+  (define ctx (context (vector) addrs len insns-addr aux))
   ctx)
 
 (define (code-size vec)
@@ -43,14 +44,31 @@
     (x86:cpu-gpr-set! cpu (car inv) (cdr inv))))
 
 (define (arch-invariants ctx initial-cpu cpu)
-  (apply &&
-    (for/list ([inv (cpu-invariant-registers ctx cpu)])
-      (equal? (x86:cpu-gpr-ref cpu (car inv)) (cdr inv)))))
+  (define mm (x86:cpu-memmgr cpu))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  (define aux (context-aux ctx))
+  (define stack_depth (zero-extend (round_up (bpf-prog-aux-stack_depth aux) (bv 8 32)) (bitvector 64)))
+  (define (loadfromstack off)
+    (core:memmgr-load mm stackbase off (bv 8 64) #:dbg 'x86_64-arch-invariants))
+
+  (&& (core:bvaligned? (x86:cpu-gpr-ref cpu x86:rsp) (bv 8 64))
+      (equal? (x86:cpu-gpr-ref initial-cpu x86:rbp) (loadfromstack (bv -16 64)))
+      (equal? (x86:cpu-gpr-ref initial-cpu x86:rbx) (loadfromstack (bvsub (bv -16 64) stack_depth (bv 8 64))))
+      (equal? (x86:cpu-gpr-ref initial-cpu x86:r12) (x86:cpu-gpr-ref cpu x86:r12))
+      (equal? (x86:cpu-gpr-ref initial-cpu x86:r13) (loadfromstack (bvsub (bv -16 64) stack_depth (bv 16 64))))
+      (equal? (x86:cpu-gpr-ref initial-cpu x86:r14) (loadfromstack (bvsub (bv -16 64) stack_depth (bv 24 64))))
+      (equal? (x86:cpu-gpr-ref initial-cpu x86:r15) (loadfromstack (bvsub (bv -16 64) stack_depth (bv 32 64))))
+      (apply &&
+        (for/list ([inv (cpu-invariant-registers ctx cpu)])
+          (equal? (x86:cpu-gpr-ref cpu (car inv)) (cdr inv))))))
 
 (define (cpu-invariant-registers ctx cpu)
+  (define aux (context-aux ctx))
+  (define stack_depth (zero-extend (round_up (bpf-prog-aux-stack_depth aux) (bv 8 32)) (bitvector 64)))
   (define memmgr (x86:cpu-memmgr cpu))
   (define stackbase (hybrid-memmgr-stackbase memmgr))
-  (list (cons x86:rsp stackbase)))
+  (list (cons x86:rbp (bvsub stackbase (bv 16 64)))
+        (cons x86:rsp (bvsub stackbase (bv 16 64) stack_depth (bv 32 64)))))
 
 (define (init-x86-cpu ctx target-pc memmgr)
   (define x86-cpu (x86:init-cpu memmgr))
@@ -124,6 +142,45 @@
 
   (x86:cpu-gpr-set! cpu x86:rax result))
 
+(define (x86_64-max-stack-usage ctx)
+  (define aux (context-aux ctx))
+  (define stack_depth (bpf-prog-aux-stack_depth aux))
+
+  (bvadd (bv (* 8 6) 64) ; 5 pushed registers + return address.
+         (zero-extend (round_up stack_depth (bv 8 32)) (bitvector 64))))
+
+(define (x86_64-bpf-stack-range ctx)
+  (define aux (context-aux ctx))
+  (define stack_depth (bpf-prog-aux-stack_depth aux))
+
+  ; rbp is pushed first for unwinding, plus saved return address.
+  (define top (bvneg (bv 16 64)))
+
+  ; BPF stack size is stack_depth
+  (define bottom (bvsub top (zero-extend (round_up stack_depth (bv 8 32)) (bitvector 64))))
+
+  (cons bottom top))
+
+(define (x86_64-copy-cpu cpu)
+  (struct-copy x86:cpu cpu
+    [gprs  (vector-copy (x86:cpu-gprs cpu))]
+    [flags (vector-copy (x86:cpu-flags cpu))]))
+
+(define (x86_64-initial-state? input cpu)
+  (define mm (x86:cpu-memmgr cpu))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  ; Stackbase on x86 is 8 bytes higher than initial SP because of the return address.
+  (&& (equal? (x86:cpu-gpr-ref cpu x86:rsp) (bvsub stackbase (bv 8 64)))
+      (equal? (x86:cpu-gpr-ref cpu x86:rdi) (program-input-r1 input))))
+
+(define (x86_64-arch-safety Tinitial Tfinal)
+  (define mm (x86:cpu-memmgr Tfinal))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  (&&
+    (equal? (x86:cpu-gpr-ref Tfinal x86:rsp) stackbase)
+    (apply && (for/list ([reg (list x86:rbp x86:rbx x86:r12 x86:r13 x86:r14 x86:r15)])
+     (equal? (x86:cpu-gpr-ref Tinitial reg) (x86:cpu-gpr-ref Tfinal reg))))))
+
 (define x86_64-target (make-bpf-target
   #:target-bitwidth 64
   #:abstract-regs cpu-abstract-regs
@@ -136,9 +193,22 @@
   #:init-ctx init-ctx
   #:code-size code-size
   #:bpf-to-target-pc bpf-to-target-pc
-  #:max-stack-usage (lambda (ctx) (bv 128 64))
+  #:max-stack-usage x86_64-max-stack-usage
   #:supports-pseudocall #f
   #:simulate-call x86_64-simulate-call
+  #:bpf-stack-range x86_64-bpf-stack-range
+  #:copy-target-cpu x86_64-copy-cpu
+  #:initial-state? x86_64-initial-state?
+  #:arch-safety x86_64-arch-safety
+  #:emit-prologue
+    (lambda (ctx)
+      (emit_prologue ctx (bpf-prog-aux-stack_depth (context-aux ctx)) #t)
+      (context-insns ctx))
+  #:emit-epilogue
+    (lambda (ctx)
+      (emit_epilogue ctx)
+      (context-insns ctx))
+  #:abstract-return-value (lambda (cpu) (core:trunc 32 (x86:cpu-gpr-ref cpu x86:rax)))
 ))
 
 (define (check-jit code)
