@@ -53,16 +53,26 @@
     (x86:cpu-gpr-set! cpu (car inv) (cdr inv))))
 
 (define (arch-invariants ctx initial-cpu cpu)
-  (apply &&
-    (for/list ([inv (cpu-invariant-registers ctx cpu)])
-      (equal? (x86:cpu-gpr-ref cpu (car inv)) (cdr inv)))))
+  (define mm (x86:cpu-memmgr cpu))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  (define (loadfromstack off)
+    (core:memmgr-load mm stackbase (bv off 32) (bv 4 32) #:dbg #f))
+
+  (&&
+    (equal? (x86:cpu-gpr-ref initial-cpu x86:ebp) (loadfromstack (- 8)))
+    (equal? (x86:cpu-gpr-ref initial-cpu x86:edi) (loadfromstack (- 12)))
+    (equal? (x86:cpu-gpr-ref initial-cpu x86:esi) (loadfromstack (- 16)))
+    (equal? (x86:cpu-gpr-ref initial-cpu x86:ebx) (loadfromstack (- 20)))
+    (apply &&
+      (for/list ([inv (cpu-invariant-registers ctx cpu)])
+        (equal? (x86:cpu-gpr-ref cpu (car inv)) (cdr inv))))))
 
 (define (cpu-invariant-registers ctx cpu)
   (define mm (x86:cpu-memmgr cpu))
   (define aux (context-aux ctx))
   (define stackbase (hybrid-memmgr-stackbase mm))
-  (list (cons x86:ebp (bvsub stackbase (bv (+ SCRATCH_SIZE 12) 32)))
-        (cons x86:esp (bvsub stackbase (bvadd (STACK_SIZE aux) (bv 16 32))))))
+  (list (cons x86:ebp (bvsub stackbase (bv (+ SCRATCH_SIZE 12 4 4) 32)))
+        (cons x86:esp (bvsub stackbase (bv 4 32) (bvadd (STACK_SIZE aux) (bv 16 32))))))
 
 (define (init-x86-cpu ctx target-pc memmgr)
   (define x86-cpu (x86:init-cpu memmgr))
@@ -108,9 +118,10 @@
     (displayln "===\n" out)))
 
 (define (x86_32-max-stack-usage ctx)
-  (bvadd (STACK_SIZE (context-aux ctx))
+  (bvadd (bv 4 32) ; Space for return addr for this function
+         (STACK_SIZE (context-aux ctx))
          (bv 16 32) ; saved regs
-         (bv 4 32) ; space for return addr
+         (bv 4 32) ; Space for return addr for called function
          (bv (* 8 5) 32))) ; Space for BPF_CALL regs
 
 (define (x86_32-simulate-call cpu call-addr call-fn)
@@ -145,6 +156,37 @@
   ; Simulate an x86 'ret' instruction.
   (x86:interpret-insn cpu (x86:ret-near)))
 
+(define (x86_32-copy-cpu cpu)
+  (struct-copy x86:cpu cpu
+    [gprs  (vector-copy (x86:cpu-gprs cpu))]
+    [flags (vector-copy (x86:cpu-flags cpu))]))
+
+(define (x86_32-bpf-stack-range ctx)
+  (define aux (context-aux ctx))
+  (define stack_depth (bpf-prog-aux-stack_depth aux))
+
+  (define top (bvneg
+    (bvadd (bv (* 4 5) 32) ; 4 pushed registers + previous return address
+           (bv SCRATCH_SIZE 32)))) ; Scratch space
+
+  (define bottom (bvsub top stack_depth))
+  (cons bottom top))
+
+(define (x86_32-initial-state? input cpu)
+  (define mm (x86:cpu-memmgr cpu))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  (&& (equal? (x86:cpu-gpr-ref cpu x86:esp) (bvsub stackbase (bv 4 32)))
+      (equal? (x86:cpu-gpr-ref cpu x86:eax) (core:trunc 32 (program-input-r1 input)))))
+
+(define (x86_32-arch-safety Tinitial Tfinal)
+  (define mm (x86:cpu-memmgr Tfinal))
+  (define stackbase (hybrid-memmgr-stackbase mm))
+  (&&
+    (equal? (x86:cpu-gpr-ref Tfinal x86:esp) stackbase)
+    (equal? (x86:cpu-pc-ref Tfinal) (core:memmgr-load mm stackbase (bv -4 32) (bv 4 32) #:dbg #f))
+    (apply && (for/list ([reg (list x86:edi x86:esi x86:ebp x86:ebx)])
+      (equal? (x86:cpu-gpr-ref Tinitial reg) (x86:cpu-gpr-ref Tfinal reg))))))
+
 (define x86_32-target (make-bpf-target
   #:target-bitwidth 32
   #:abstract-regs cpu-abstract-regs
@@ -160,6 +202,19 @@
   #:bpf-to-target-pc bpf-to-target-pc
   #:simulate-call x86_32-simulate-call
   #:supports-pseudocall #f
+  #:copy-target-cpu x86_32-copy-cpu
+  #:bpf-stack-range x86_32-bpf-stack-range
+  #:initial-state? x86_32-initial-state?
+  #:emit-prologue
+    (lambda (ctx)
+      (emit_prologue ctx (bpf-prog-aux-stack_depth (context-aux ctx)))
+      (context-insns ctx))
+  #:emit-epilogue
+    (lambda (ctx)
+      (emit_epilogue ctx (bpf-prog-aux-stack_depth (context-aux ctx)))
+      (context-insns ctx))
+  #:abstract-return-value (lambda (cpu) (x86:cpu-gpr-ref cpu x86:eax))
+  #:arch-safety x86_32-arch-safety
 ))
 
 (define (check-jit code)

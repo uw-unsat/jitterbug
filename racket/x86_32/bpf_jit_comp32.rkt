@@ -916,6 +916,70 @@
     [(BPF_B) 1]
     [(BPF_DW) 4])) ; imm32
 
+(define (emit_prologue ctx stack_depth)
+  (define aux (context-aux ctx))
+  (parameterize ([current-context ctx])
+    (define r1 (bpf2ia32 BPF_REG_1))
+    (define fplo (lo (bpf2ia32 BPF_REG_FP)))
+    (define fphi (hi (bpf2ia32 BPF_REG_FP)))
+    (define tcc (bpf2ia32 TCALL_CNT))
+
+    ; push ebp
+    (EMIT1 #x55)
+    ; mov ebp,esp
+    (EMIT2 #x89 #xE5)
+    ; push edi
+    (EMIT1 #x57)
+    ; push esi
+    (EMIT1 #x56)
+    ; push ebx
+    (EMIT1 #x53)
+
+    ; sub esp,STACK_SIZE
+    (EMIT2_off32 #x81 #xEC (STACK_SIZE aux))
+    ; sub ebp,SCRATCH_SIZE+12
+    (EMIT3 #x83 (add_1reg #xE8 IA32_EBP) (core:trunc 8 (bvadd (bv SCRATCH_SIZE 32) (bv 12 32))))
+    ; xor ebx,ebx
+    (EMIT2 #x31 (add_2reg #xC0 IA32_EBX IA32_EBX))
+
+    ; Set up BPF prog stack base register
+    (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EBP) (STACK_VAR fplo))
+    (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EBX) (STACK_VAR fphi))
+
+    ; Move BPF_CTX (EAX) to BPF_REG_R1
+    (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EAX) (STACK_VAR (lo r1)))
+    (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EBX) (STACK_VAR (hi r1)))
+
+    ; Initialize Tail Count
+    (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EBX) (STACK_VAR (lo tcc)))
+    (EMIT3 #x89 (add_2reg #x40 IA32_EBP IA32_EBX) (STACK_VAR (hi tcc)))
+
+    (void)))
+
+(define (emit_epilogue ctx stack_depth)
+  (parameterize ([current-context ctx])
+    (define r0 (bpf2ia32 BPF_REG_0))
+
+    ; mov eax,dwrod ptr [ebpf+off]
+    (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_EAX) (STACK_VAR (lo r0)))
+    ; mov edx,dword ptr [ebp+off]
+    (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_EDX) (STACK_VAR (hi r0)))
+
+    ; add ebp,SCRATCH_SIZE+12
+    (EMIT3 #x83 (add_1reg #xC0 IA32_EBP) (core:trunc 8 (bvadd (bv SCRATCH_SIZE 32) (bv 12 32))))
+
+    ; mov ebx,dword ptr [ebp-12]
+    (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_EBX) (bv -12 8))
+    ; mov esi,dword ptr [ebp-8]
+    (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_ESI) (bv -8 8))
+    ; mov edi,dword ptr [ebp-4]
+    (EMIT3 #x8B (add_2reg #x40 IA32_EBP IA32_EDI) (bv -4 8))
+
+    (EMIT1 #xC9) ; leave
+    (EMIT1 #xC3) ; ret
+
+    (void)))
+
 ; Push the scratch register on top of the stack.
 (define (emit_push_r64 src pprog)
   ; mov ecx,dword ptr [ebp+off]
