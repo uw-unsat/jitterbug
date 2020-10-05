@@ -77,17 +77,60 @@
   (define aux (context-aux ctx))
   (define stack_depth (bpf-prog-aux-stack_depth aux))
 
+  (define (loadfromstack off)
+    (core:memmgr-load mm stackbase (bv off 64) (bv 8 64) #:dbg 'arm64-arch-invariants))
+
   (&&
+    (core:bvaligned? (arm64:cpu-sp-ref cpu) (bv 16 64))
     (equal? (context-stack-size ctx) (STACK_ALIGN stack_depth))
     (equal? (arm64:cpu-gpr-ref cpu A64_FP) (bvsub stackbase (bv 16 64)))
     (equal? (arm64:cpu-sp-ref cpu)
             (bvsub stackbase
                    (bv 64 64)
                    (zero-extend (STACK_ALIGN stack_depth) (bitvector 64))))
-    (core:bvaligned? pc (bv 4 (type-of pc)))))
+    (core:bvaligned? pc (bv 4 (type-of pc)))
+
+    ; Saved registers
+    ; A64_FP
+    (equal? (arm64:cpu-gpr-ref initial-cpu A64_FP) (loadfromstack (- 16)))
+    ; A64_LR
+    (equal? (arm64:cpu-gpr-ref initial-cpu A64_LR) (loadfromstack (- 8)))
+
+    ; BPF_REG_6
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 19)) (loadfromstack (- 32)))
+    ; BPF_REG_7
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 20)) (loadfromstack (- 24)))
+
+    ; BPF_REG_8
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 21)) (loadfromstack (- 48)))
+    ; BPF_REG_9
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 22)) (loadfromstack (- 40)))
+
+    ; BPF_REG_FP
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 25)) (loadfromstack (- 64)))
+    ; TCALL_CNT
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 26)) (loadfromstack (- 56)))
+
+    ; Unused registers
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 18))
+            (arm64:cpu-gpr-ref cpu (A64_R 18)))
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 23))
+            (arm64:cpu-gpr-ref cpu (A64_R 23)))
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 27))
+            (arm64:cpu-gpr-ref cpu (A64_R 27)))
+    (equal? (arm64:cpu-gpr-ref initial-cpu (A64_R 28))
+            (arm64:cpu-gpr-ref cpu (A64_R 28)))
+
+  ))
 
 (define (arm64-arch-safety Tinitial Tfinal)
-  #t)
+  (&&
+    (equal? (arm64:cpu-gpr-ref Tinitial A64_LR)
+            (arm64:cpu-pc Tfinal))
+    (apply &&
+      (for/list ([regnum '(18 19 20 21 22 23 25 26 27 28 29 30)])
+        (equal? (arm64:cpu-gpr-ref Tinitial (A64_R regnum))
+                (arm64:cpu-gpr-ref Tfinal   (A64_R regnum)))))))
 
 (define (arm64-max-stack-usage ctx)
   (define aux (context-aux ctx))
@@ -161,8 +204,10 @@
   #:arch-safety arm64-arch-safety
   #:bpf-stack-range arm64-bpf-stack-range
   #:emit-prologue (lambda (ctx) (build_prologue ctx #f) (context-insns ctx))
+  #:emit-epilogue (lambda (ctx) (build_epilogue ctx) (context-insns ctx))
   #:copy-target-cpu arm64-copy-cpu
   #:initial-state? arm64-initial-state?
+  #:abstract-return-value (lambda (cpu) (core:trunc 32 (arm64:cpu-gpr-ref cpu (A64_R 0))))
 ))
 
 (define (check-jit code)

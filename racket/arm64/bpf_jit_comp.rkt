@@ -219,6 +219,33 @@
   (emit (A64_SUB_I (bv 1 1) A64_SP A64_SP (context-stack-size ctx)) ctx)
   (void))
 
+(define (build_epilogue ctx)
+  (define r0 (bpf2a64 BPF_REG_0))
+  (define r6 (bpf2a64 BPF_REG_6))
+  (define r7 (bpf2a64 BPF_REG_7))
+  (define r8 (bpf2a64 BPF_REG_8))
+  (define r9 (bpf2a64 BPF_REG_9))
+  (define fp (bpf2a64 BPF_REG_FP))
+
+  ; We're done with BPF stack
+  (emit (A64_ADD_I (bv 1 1) A64_SP A64_SP (context-stack-size ctx)) ctx)
+
+  ; Restore fs (x25) and x26
+  (emit (A64_POP fp (A64_R 26) A64_SP) ctx)
+
+  ; Restore callee-saved register
+  (emit (A64_POP r8 r9 A64_SP) ctx)
+  (emit (A64_POP r6 r7 A64_SP) ctx)
+
+  ; Restore FP/LR registers
+  (emit (A64_POP A64_FP A64_LR A64_SP) ctx)
+
+  ; Set return value
+  (emit (A64_MOV (bv 1 1) (A64_R 0) r0) ctx)
+
+  (emit (A64_RET A64_LR) ctx)
+  (void))
+
 (define (emit_cond_jmp code i off ctx)
   (define off32 (sign-extend off (bitvector 32)))
   (define jmp_offset (bpf2a64_offset i off32 ctx))

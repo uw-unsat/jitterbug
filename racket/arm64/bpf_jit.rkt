@@ -50,6 +50,7 @@
 
 (define (A64_BR Rn) (arm64:br Rn))
 (define (A64_BLR Rn) (arm64:blr Rn))
+(define (A64_RET Rn) (arm64:ret Rn))
 
 ; LSE atomics
 (define (A64_STADD sf Rn Rs)
@@ -73,6 +74,8 @@
 ; Load/store register pair
 ; Rn -= 16; Rn[0] = Rt; Rn[8] = Rt2;
 (define (A64_PUSH Rt Rt2 Rn) (arm64:stp-preindex (bv #b10 2) (bv -2 7) Rt2 Rn Rt))
+; Rt = Rn[0]; Rt2 = Rn[8]; Rn += 16;
+(define (A64_POP Rt Rt2 Rn) (arm64:ldp-postindex (bv #b10 2) (bv 2 7) Rt2 Rn Rt))
 
 ; Add/subtract (immediate)
 

@@ -69,6 +69,7 @@
                     #:msg "Arch safety must hold after running epilogue")
         (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
                     #:msg "Epilogue must not generate memory trace events")
+        (void)
       )))
 
   null)
