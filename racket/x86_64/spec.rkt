@@ -178,6 +178,7 @@
   (define mm (x86:cpu-memmgr Tfinal))
   (define stackbase (hybrid-memmgr-stackbase mm))
   (&&
+    (equal? (x86:cpu-pc-ref Tfinal) (core:memmgr-load mm stackbase (bv -8 64) (bv 8 64) #:dbg #f))
     (equal? (x86:cpu-gpr-ref Tfinal x86:rsp) stackbase)
     (apply && (for/list ([reg (list x86:rbp x86:rbx x86:r12 x86:r13 x86:r14 x86:r15)])
      (equal? (x86:cpu-gpr-ref Tinitial reg) (x86:cpu-gpr-ref Tfinal reg))))))
