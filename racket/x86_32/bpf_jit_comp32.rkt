@@ -25,7 +25,7 @@
 
 (define current-context (make-parameter #f))
 
-(struct context (image insns offset len aux) #:mutable #:transparent)
+(struct context (image insns offset len aux seen-exit cleanup-addr) #:mutable #:transparent)
 
 (define STACK_ALIGNMENT 8)
 (define SCRATCH_SIZE 96)
@@ -1598,5 +1598,17 @@
          [else
           (EMIT1_off32 #xE9 jmp_offset)]))]
 
+    [((BPF_JMP BPF_EXIT))
+      (cond
+        [(context-seen-exit &prog)
+          (define jmp_offset (bvsub (context-cleanup-addr &prog) (addrs i)))
+          (cond
+            [(is_imm8 jmp_offset)
+              (EMIT2 #xEB (extract 7 0 jmp_offset))]
+            [else
+              (EMIT1_off32 #xE9 jmp_offset)])]
+        [else
+          (set-context-seen-exit! &prog #t)
+          (set-context-cleanup-addr! &prog (context-len &prog))])]
     [else
      (assert #f (format "bpf_jit: unknown opcode ~v" code))]))

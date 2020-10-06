@@ -16,9 +16,13 @@
 
 (define (init-ctx insns-addr insn-idx program-length aux)
   (define-symbolic* addrs (~> (bitvector 32) (bitvector 32)))
-  (define-symbolic* len (bitvector 32))
-  (define ctx (context insns-addr (vector) addrs len aux))
+  (define-symbolic* len cleanup-addr (bitvector 32))
+  (define-symbolic* seen-exit boolean?)
+  (define ctx (context insns-addr (vector) addrs len aux seen-exit cleanup-addr))
   ctx)
+
+(define (x86_32-ctx-valid? ctx insn-idx)
+  (&& (equal? (context-len ctx) ((context-offset ctx) insn-idx))))
 
 (define (code-size vec)
   (vector-length vec))
@@ -187,6 +191,9 @@
     (apply && (for/list ([reg (list x86:edi x86:esi x86:ebp x86:ebx)])
       (equal? (x86:cpu-gpr-ref Tinitial reg) (x86:cpu-gpr-ref Tfinal reg))))))
 
+(define (x86_32-epilogue-offset target-pc-base ctx)
+  (bvadd target-pc-base (context-cleanup-addr ctx)))
+
 (define x86_32-target (make-bpf-target
   #:target-bitwidth 32
   #:abstract-regs cpu-abstract-regs
@@ -205,6 +212,8 @@
   #:copy-target-cpu x86_32-copy-cpu
   #:bpf-stack-range x86_32-bpf-stack-range
   #:initial-state? x86_32-initial-state?
+  #:ctx-valid? x86_32-ctx-valid?
+  #:epilogue-offset x86_32-epilogue-offset
   #:emit-prologue
     (lambda (ctx)
       (emit_prologue ctx (bpf-prog-aux-stack_depth (context-aux ctx)))
