@@ -148,7 +148,8 @@
 
   (bvadd (bv (* 8 6) 64) ; 5 pushed registers + return address.
          (bv 8 64) ; Return address for next function.
-         (zero-extend (round_up stack_depth (bv 8 32)) (bitvector 64))))
+         (zero-extend (round_up stack_depth (bv 8 32)) (bitvector 64))
+         (bv 16 64))) ; Pushed args for MUL, DIV, etc.
 
 (define (x86_64-bpf-stack-range ctx)
   (define aux (context-aux ctx))
