@@ -9,7 +9,7 @@
          set-hybrid-memmgr-stacksize! (struct-out call-event)
          hybrid-memmgr-get-fresh-bytes)
 
-(define enable-stack-addr-symopt (make-environment-flag "ENABLE_STACK_ADDR_SYMOPT" #t))
+(define enable-stack-addr-symopt (make-environment-flag "ENABLE_STACK_ADDR_SYMOPT" #f))
 
 (struct load-event (addr size result) #:transparent)
 (struct store-event (addr size value) #:transparent)
