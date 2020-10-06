@@ -23,7 +23,7 @@
 
 (define current-context (make-parameter #f))
 
-(struct context (insns offset len image aux) #:mutable #:transparent)
+(struct context (insns offset len image aux seen-exit cleanup-addr) #:mutable #:transparent)
 
 (define (emit_code ctx lst)
   (define size (bv (length lst) 32))
@@ -842,5 +842,16 @@
 
      (when (! (bvzero? jmp_offset)) ; Optimize out nop jumps
        (emit_jmp jmp_offset))]
+
+    [((BPF_JMP BPF_EXIT))
+      (cond
+        [(context-seen-exit &prog)
+          (define jmp_offset (bvsub (context-cleanup-addr &prog) (addrs i)))
+          (emit_jmp jmp_offset)]
+        [else
+          (set-context-seen-exit! &prog #t)
+          (set-context-cleanup-addr! &prog (context-len &prog))
+          ; Epilogue proved separately.
+          (void)])]
 
     [else (assert #f (format "Unrecognized code: ~v" code))]))

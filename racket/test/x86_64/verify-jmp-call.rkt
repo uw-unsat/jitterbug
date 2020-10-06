@@ -6,4 +6,4 @@
 
 (module+ test
   (time (verify-jmp-call "x86_64-jmp-call tests" check-jit
-                         #:selector (verify-only-in (list 'BPF_CALL)))))
+                         #:selector (verify-only-in (list 'BPF_CALL 'BPF_EXIT)))))

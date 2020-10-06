@@ -142,6 +142,9 @@
       (bvult (bvsub (make-target-pc program-length)
                     (make-target-pc (bv 0 32)))
             max-target-size)
+      (bvult (bvsub (epilogue-offset target-pc-base ctx)
+                    (make-target-pc (bv 0 32)))
+            max-target-size)
       ; Memory manager invariants hold (e.g., stack alignment)
       (core:memmgr-invariants memmgr)
       ; BPF stack depth in bounds
