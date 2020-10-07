@@ -407,11 +407,11 @@ end target
 namespace jit
 
   -- Emit target code for a single source instruction.
-  constant emit_insn : CONTEXT → source.CODE → source.PC → option target.CODE
+  constant emit_insn : CONTEXT → source.INSN → source.PC → option target.CODE
 
-  constant emit_prologue : CONTEXT → source.CODE → option target.CODE
+  constant emit_prologue : CONTEXT → option target.CODE
 
-  constant emit_epilogue : CONTEXT → source.CODE → option target.CODE
+  constant emit_epilogue : CONTEXT → option target.CODE
 
   constant compute_ctx : source.CODE → CONTEXT
 
@@ -429,9 +429,9 @@ namespace jit
       (∀ (i : source.PC) (insn : source.INSN),
         code_S i = some insn →
         ∃ (frag_T : target.CODE),
-          jit.emit_insn (compute_ctx code_S) code_S i = some frag_T ∧ frag_T <+ code_T) ∧
-      (∃ (frag_T : target.CODE), jit.emit_prologue (compute_ctx code_S) code_S = some frag_T ∧ frag_T <+ code_T) ∧
-      (∃ (frag_T : target.CODE), jit.emit_epilogue (compute_ctx code_S) code_S = some frag_T ∧ frag_T <+ code_T)
+          jit.emit_insn (compute_ctx code_S) insn i = some frag_T ∧ frag_T <+ code_T) ∧
+      (∃ (frag_T : target.CODE), jit.emit_prologue (compute_ctx code_S) = some frag_T ∧ frag_T <+ code_T) ∧
+      (∃ (frag_T : target.CODE), jit.emit_epilogue (compute_ctx code_S) = some frag_T ∧ frag_T <+ code_T)
 
   -- If compile produces some code, then the JIT context it computes is well-formed
   --
@@ -459,7 +459,7 @@ axiom prologue_correct :
       source.wf ctx code_S →
       target.initial σ_T i →
       source.initial σ_S i →
-      jit.emit_prologue ctx code_S = some code_T →
+      jit.emit_prologue ctx = some code_T →
       ∃ (σ_T' : target.STATE),
         target.star nd code_T σ_T σ_T' [] ∧
         σ_S ~[ctx] σ_T' ∧
@@ -476,7 +476,7 @@ axiom epilogue_correct :
     σ_S ~[ctx] σ_T →
     target.arch_safe_inv ctx init_T σ_T →
     source.final σ_S o →
-    jit.emit_epilogue ctx code_S = some code_T →
+    jit.emit_epilogue ctx = some code_T →
     ∃ (σ_T' : target.STATE),
       target.star nd code_T σ_T σ_T' [] ∧
       target.final σ_T' o ∧
@@ -488,11 +488,12 @@ axiom epilogue_correct :
 --
 -- This is proved in SMT.
 axiom per_insn_correct :
-  ∀ (nd : ORACLE) (ctx : CONTEXT) (idx : source.PC) (code_S : source.CODE)
+  ∀ (nd : ORACLE) (ctx : CONTEXT) (idx : source.PC) (code_S : source.CODE) (insn : source.INSN)
     (frag_T : target.CODE) (σ_S σ_S' : source.STATE) (init_T σ_T : target.STATE) (tr : TRACE)
     (code_T : target.CODE),
       source.wf ctx code_S →
-      jit.emit_insn ctx code_S idx = some frag_T →
+      code_S idx = some insn →
+      jit.emit_insn ctx insn idx = some frag_T →
       σ_S ~[ctx] σ_T →
       target.arch_safe_inv ctx init_T σ_T →
       source.pc_of σ_S = idx →
@@ -530,7 +531,7 @@ begin
   tactic.swap,
   { apply IH; assumption, },
 
-  have hemit : ∃ f_T, jit.emit_insn (jit.compute_ctx code_S) code_S (source.pc_of s1) = some f_T ∧ f_T <+ code_T,
+  have hemit : ∃ f_T, jit.emit_insn (jit.compute_ctx code_S) insn (source.pc_of s1) = some f_T ∧ f_T <+ code_T,
   {
     cases (jit.layout_consistency code_S code_T emitted),
     apply left; assumption,
