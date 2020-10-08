@@ -6,11 +6,13 @@ This file contains the metatheory of JIT correctness.
 
 The main theorem is interpreter_equivalence, proved based on the following two sets of axioms.
 
-Two axioms are assumed to be correct (e.g., ensured by the Linux kernel):
+Three axioms are assumed to be correct (e.g., ensured by the Linux kernel):
 
 * ctx_correctness: the JIT computes a correct JIT context for the source program
 
 * layout_consistency: the output of the JIT contains the output of individual parts.
+
+* initial_consistency: any initial state for a target program is an initial state for the prologue.
 
 Three axioms about the correctness of individal parts of the JIT are expected
 to be proved separately in SMT:
@@ -433,15 +435,18 @@ namespace jit
       (∃ (frag_T : target.CODE), jit.emit_prologue (compute_ctx code_S) = some frag_T ∧ frag_T <+ code_T) ∧
       (∃ (frag_T : target.CODE), jit.emit_epilogue (compute_ctx code_S) = some frag_T ∧ frag_T <+ code_T)
 
+  -- Any initial state for a target program is an initial state for the prologue.
+  --
+  -- This is assumed to hold.
   axiom initial_consistency :
     ∀ (code_S : source.CODE) (code_T : target.CODE) (σ_T : target.STATE) (i : INPUT),
       jit.compile code_S = some code_T →
       ∃ (frag_T : target.CODE),
        jit.emit_prologue (compute_ctx code_S) = some frag_T ∧
-       (target.initial σ_T code_T i ↔
+       (target.initial σ_T code_T i →
         target.initial σ_T frag_T i)
 
-  -- If compile produces some code, then the JIT context it computes is well-formed
+  -- If compile produces some code, then the JIT context it computes is well-formed.
   --
   -- This is assumed to hold.
   axiom ctx_correctness :
@@ -452,12 +457,11 @@ namespace jit
   lemma initial_prologue_match : ∀ (code_S : source.CODE) (code_T frag_T : target.CODE) (σ_T : target.STATE) (i : INPUT),
       jit.compile code_S = some code_T →
       jit.emit_prologue (compute_ctx code_S) = some frag_T →
-      (target.initial σ_T code_T i ↔
+      (target.initial σ_T code_T i →
        target.initial σ_T frag_T i) :=
   begin
     intros,
     cases (initial_consistency code_S code_T σ_T i (by assumption)),
-    cases h,
     cc,
   end
 
@@ -624,7 +628,7 @@ begin
   have hprologue : ∃ t2, target.star nd prologue σ_T t2 [] ∧
                          σ_S ~[jit.compute_ctx code_S] t2 ∧ target.arch_safe_inv (jit.compute_ctx code_S) σ_T t2,
   { apply prologue_correct; try{assumption},
-    rw ← jit.initial_prologue_match; assumption,
+    apply jit.initial_prologue_match; assumption,
    },
   cases hprologue with t2 hprologue,
   cases hprologue,
