@@ -93,7 +93,7 @@
 ; Program input is fp and r1
 (struct program-input (r1) #:transparent)
 
-(define (bpf-initial-state? input cpu)
+(define (bpf-initial-state? ctx input cpu)
   (equal? (bpf:reg-ref cpu BPF_REG_1) (program-input-r1 input)))
 
 (define emit-insn-split-regs? (make-environment-flag "ENABLE_JIT_SPLIT_REGS" #f))

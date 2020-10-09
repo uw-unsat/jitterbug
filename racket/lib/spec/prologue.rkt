@@ -27,6 +27,7 @@
   (define bpf-stack-range (bpf-target-bpf-stack-range target))
   (define abstract-regs (bpf-target-abstract-regs target))
   (define copy-target-cpu (bpf-target-copy-target-cpu target))
+  (define ctx-valid? (bpf-target-ctx-valid? target))
 
   (define-symbolic* target-pc-base (bitvector target-bitwidth))
   (define prog-aux (make-bpf-prog-aux))
@@ -56,12 +57,14 @@
   (define pre (&&
     ; Memory manager invariants hold (e.g., stack alignment)
     (core:memmgr-invariants memmgr)
+    ; wf
+    (ctx-valid? ctx (bv 0 32))
 
     ; Target is initial state
-    (initial-state? input target-cpu)
+    (initial-state? ctx input target-cpu)
 
     ; Source is initial state
-    (bpf-initial-state? input bpf-cpu)
+    (bpf-initial-state? ctx input bpf-cpu)
 
     ; Context pointer upper bits are 0.
     (implies (< target-bitwidth 64)

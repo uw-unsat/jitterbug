@@ -63,8 +63,10 @@
   (define offset (context-offset ctx))
   (define epilogue-offset (context-epilogue-offset ctx))
   (define program-length (context-program-length ctx))
+  (define base (context-insns-addr ctx))
 
   (&&
+    (core:bvaligned? base (bv 4 (type-of base)))
 
     (equal? epilogue-offset (offset (bvsub1 program-length)))
 

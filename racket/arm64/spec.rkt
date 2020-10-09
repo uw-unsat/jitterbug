@@ -176,7 +176,7 @@
     [xn   (vector-copy (arm64:cpu-xn cpu))]
     [nzcv (struct-copy arm64:nzcv (arm64:cpu-nzcv cpu))]))
 
-(define (arm64-initial-state? input cpu)
+(define (arm64-initial-state? ctx input cpu)
   (define mm (arm64:cpu-memmgr cpu))
   (define stackbase (hybrid-memmgr-stackbase mm))
   (&&

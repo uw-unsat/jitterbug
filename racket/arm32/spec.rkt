@@ -193,7 +193,7 @@
 
   (cons bottom top))
 
-(define (arm32-initial-state? input cpu)
+(define (arm32-initial-state? ctx input cpu)
   (define memmgr (arm32:cpu-memmgr cpu))
   (&& (core:bvaligned? (arm32:cpu-pc cpu) (bv 4 32))
       (core:bvaligned? (arm32:cpu-gpr-ref cpu ARM_SP) (bv 8 32))

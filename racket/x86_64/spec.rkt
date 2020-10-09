@@ -172,7 +172,7 @@
     [gprs  (vector-copy (x86:cpu-gprs cpu))]
     [flags (vector-copy (x86:cpu-flags cpu))]))
 
-(define (x86_64-initial-state? input cpu)
+(define (x86_64-initial-state? ctx input cpu)
   (define mm (x86:cpu-memmgr cpu))
   (define stackbase (hybrid-memmgr-stackbase mm))
   ; Stackbase on x86 is 8 bytes higher than initial SP because of the return address.

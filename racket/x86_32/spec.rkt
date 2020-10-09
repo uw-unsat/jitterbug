@@ -176,7 +176,7 @@
   (define bottom (bvsub top stack_depth))
   (cons bottom top))
 
-(define (x86_32-initial-state? input cpu)
+(define (x86_32-initial-state? ctx input cpu)
   (define mm (x86:cpu-memmgr cpu))
   (define stackbase (hybrid-memmgr-stackbase mm))
   (&& (equal? (x86:cpu-gpr-ref cpu x86:esp) (bvsub stackbase (bv 4 32)))

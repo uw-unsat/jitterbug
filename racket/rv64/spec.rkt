@@ -113,12 +113,12 @@
 
   (cons bottom top))
 
-(define (rv64-initial-state? input cpu)
+(define (rv64-initial-state? ctx input cpu)
   (define pc (riscv:cpu-pc cpu))
   (define memmgr (riscv:cpu-memmgr cpu))
   (&&
-    ; PC is aligned.
-    (core:bvaligned? pc (bv 2 (type-of pc)))
+    ; PC equals start of instructions
+    (equal? (riscv:cpu-pc cpu) (context-insns-addr ctx))
     ; Stack pointer is aligned.
     (core:bvaligned? (riscv:gpr-ref cpu 'sp) (bv 16 64))
     ; Stack pointer points to base of stack.
@@ -126,7 +126,6 @@
 
     ; Program input matches
     (equal? (rv64_get_bpf_reg cpu BPF_REG_1) (program-input-r1 input))))
-
 
 (define rv64-target (make-bpf-target
   #:target-bitwidth 64
