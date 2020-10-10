@@ -198,7 +198,7 @@
                 (define next-program-input (program-input bpf-context-ptr))
 
                 ; Prologue assumptions must hold on entry.
-                (bug-assert (initial-state? next-program-input target-cpu)
+                (bug-assert (initial-state? ctx next-program-input target-cpu)
                             #:msg "Prologue assumptions should hold after tail call")
 
                 (bug-assert (equal? (core:gen-cpu-pc target-cpu) (bvadd tcall-addr (bv 4 32)))
