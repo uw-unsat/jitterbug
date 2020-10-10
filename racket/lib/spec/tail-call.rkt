@@ -39,6 +39,7 @@
   (define max-stack-usage (bpf-target-max-stack-usage target))
   (define bpf-stack-range (bpf-target-bpf-stack-range target))
   (define initial-state? (bpf-target-initial-state? target))
+  (define ctx-valid? (bpf-target-ctx-valid? target))
 
   ; Create symbolic register content for each BPF register
   (define-symbolic* r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 ax (bitvector 64))
@@ -95,6 +96,9 @@
            max-target-size)
     (bvult (bvsub (make-target-pc program-length) (make-target-pc (bv 0 32)))
            max-target-size)
+
+    ; wf
+    (ctx-valid? ctx insn-idx)
 
     ; Memory manager invariants hold (e.g., stack alignment)
     (core:memmgr-invariants memmgr)
@@ -196,10 +200,6 @@
                             #:msg "tail call should not clobber BPF R1")
 
                 (define next-program-input (program-input bpf-context-ptr))
-
-                ; Prologue assumptions must hold on entry.
-                (bug-assert (initial-state? ctx next-program-input target-cpu)
-                            #:msg "Prologue assumptions should hold after tail call")
 
                 (bug-assert (equal? (core:gen-cpu-pc target-cpu) (bvadd tcall-addr (bv 4 32)))
                             #:msg "tail-call: PC after tail call must be correct")
