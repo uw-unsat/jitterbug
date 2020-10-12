@@ -566,7 +566,7 @@ begin
   push_cast [← to_nat_inj],
   apply mod_eq_zero_of_dvd,
   apply dvd_trans _ (dvd_mul_left _ _),
-  apply nat.pow_dvd_pow _ h
+  apply pow_dvd_pow _ h
 end
 
 @[norm_cast]

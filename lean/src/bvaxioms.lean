@@ -34,13 +34,13 @@ by simp [mulhu, mul_comm]
 
 private lemma mod_pow_add_right_div_self (a b n m : ℕ) :
   a % b^(n + m) / b^n = a / b^n % b^m :=
-by rw [nat.pow_add, nat.mod_mul_right_div_self]
+by rw [pow_add, nat.mod_mul_right_div_self]
 
 private lemma mod_pow_add_right_mod_self (a b n m : ℕ) :
   a % b^(n + m) % b^n = a % b^n :=
 begin
   apply nat.mod_mod_of_dvd,
-  apply nat.pow_dvd_pow; omega
+  apply pow_dvd_pow; omega
 end
 
 lemma drop_mul_concat {n : ℕ} (x₁ x₀ y₁ y₀ : bv n) :

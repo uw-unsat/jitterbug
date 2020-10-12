@@ -7,10 +7,13 @@ namespace bv.helper
 open nat
 
 lemma pow2_succ (n : ℕ) : 2^(succ n) = 2 * 2^n :=
-by simp [nat.pow_succ, mul_comm]
+by simp [pow_succ, mul_comm]
+
+lemma two_pos : 2 > 0 :=
+dec_trivial
 
 lemma pow2_pos (n : ℕ) : 2^n > 0 :=
-pos_pow_of_pos _ two_pos
+pow_pos two_pos n
 
 @[simp]
 lemma bit_div_two (b : bool) (n : ℕ) : bit b n / 2 = n :=
