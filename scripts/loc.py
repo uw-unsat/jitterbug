@@ -198,9 +198,16 @@ do_loc(
     ["serval/serval/bpf.rkt"],
 )
 
+do_loc(
+    "Lean proofs",
+    "Lean",
+    ["lean/src/bvaxioms.lean", "lean/src/jit.lean"],
+)
+
 print('### Generic components')
 print('Jitterbug library = {:,} loc'.format(data['Jitterbug library']))
 print('BPF interpreter = {:,} loc'.format(data['Racket BPF interpreter']))
+print('Lean proofs = {:,} loc'.format(data['Lean proofs']))
 
 print('\n### Code size table')
 print('\\begin{tabular}{lrrrr}')
