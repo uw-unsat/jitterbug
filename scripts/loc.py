@@ -201,7 +201,7 @@ do_loc(
 do_loc(
     "Lean proofs",
     "Lean",
-    ["lean/src/bvaxioms.lean", "lean/src/jit.lean"],
+    ["lean/src/"],
 )
 
 print('### Generic components')
