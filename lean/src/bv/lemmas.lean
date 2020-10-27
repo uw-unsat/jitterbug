@@ -11,10 +11,7 @@ variable {n : ℕ}
 
 @[simp]
 lemma lsb_cons (b : bool) (v : bv n) : (cons b v).lsb = b :=
-begin
-  unfold cons,
-  apply fin.cons_zero
-end
+fin.cons_zero _ _
 
 @[simp]
 lemma tail_cons (b : bool) (v : bv n) : (cons b v).tail = v :=

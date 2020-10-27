@@ -34,6 +34,7 @@ variable {n : ℕ}
   def init (v : bv (n + 1)) : bv n := fin.init v
   def tail (v : bv (n + 1)) : bv n := fin.tail v
 
+  @[reducible]
   def lsb (v : bv (n + 1)) : bool := v 0
   def msb (v : bv (n + 1)) : bool := v (fin.last n)
 
