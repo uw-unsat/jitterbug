@@ -11,7 +11,10 @@ variable {n : ℕ}
 
 @[simp]
 lemma lsb_cons (b : bool) (v : bv n) : (cons b v).lsb = b :=
-fin.cons_zero _ v
+begin
+  unfold cons,
+  apply fin.cons_zero
+end
 
 @[simp]
 lemma tail_cons (b : bool) (v : bv n) : (cons b v).tail = v :=
@@ -637,7 +640,7 @@ begin
 end
 
 @[priority 101]
-instance unsigned : decidable_linear_order (bv n) :=
+instance unsigned : linear_order (bv n) :=
 { le               := bv.ule,
   decidable_le     := bv.decidable_ule,
   le_refl          := bv.ule_refl,
@@ -703,7 +706,7 @@ begin
 end
 
 @[priority 100]
-instance signed : decidable_linear_order (bv (n + 1)) :=
+instance signed : linear_order (bv (n + 1)) :=
 { le               := bv.sle,
   decidable_le     := bv.decidable_sle,
   le_refl          := bv.sle_refl,
