@@ -11,10 +11,10 @@
   (prefix-in core: serval/lib/core)
   rosette/lib/synthax
   rosette/lib/angelic
-  "bpf-common.rkt"
-  "riscv-common.rkt"
-  "spec/bpf.rkt"
-  "spec/per-insn.rkt"
+  "../lib/bpf-common.rkt"
+  "impl-common.rkt"
+  "../lib/spec/bpf.rkt"
+  "../lib/spec/per-insn.rkt"
 )
 
 (provide (all-defined-out))

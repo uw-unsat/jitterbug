@@ -2,13 +2,13 @@
 
 (require
   "bpf_jit_comp32.rkt"
-  "../lib/linux.rkt"
-  "../lib/spec/bpf.rkt"
-  "../lib/spec/proof.rkt"
-  "../lib/riscv-common.rkt"
-  "../lib/spec/riscv.rkt"
-  "../lib/bpf-common.rkt"
-  "../lib/hybrid-memory.rkt"
+  "../../lib/linux.rkt"
+  "../../lib/spec/bpf.rkt"
+  "../../lib/spec/proof.rkt"
+  "../impl-common.rkt"
+  "../spec-common.rkt"
+  "../../lib/bpf-common.rkt"
+  "../../lib/hybrid-memory.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/interp)

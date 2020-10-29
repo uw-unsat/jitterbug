@@ -1,6 +1,6 @@
 #lang racket/base
 
-(require "../../rv32/spec.rkt" "../../rv32/synthesis.rkt")
+(require "../../riscv/rv32/spec.rkt" "../../riscv/rv32/synthesis.rkt")
 (require serval/lib/unittest)
 
 (define tests

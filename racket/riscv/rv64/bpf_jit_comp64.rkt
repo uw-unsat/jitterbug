@@ -9,12 +9,12 @@
 ; Copyright(c) 2019 Björn Töpel <bjorn.topel@gmail.com>
 
 (require
-  "../lib/bpf-common.rkt"
-  "../lib/riscv-common.rkt"
-  "../lib/patch.rkt"
-  "../lib/bvaxiom.rkt"
-  "../lib/linux.rkt"
-  "../lib/spec/bpf.rkt"
+  "../../lib/bpf-common.rkt"
+  "../impl-common.rkt"
+  "../../lib/patch.rkt"
+  "../../lib/bvaxiom.rkt"
+  "../../lib/linux.rkt"
+  "../../lib/spec/bpf.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/base)

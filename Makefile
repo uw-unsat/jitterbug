@@ -65,10 +65,10 @@ gen: \
     arch/riscv/net/bpf_jit.h \
     racket/stacklang/jit.c \
 
-arch/riscv/net/bpf_jit.h: racket/rvenc/bpf_jit.generated.c.rkt
-	$(QUIET_GEN)racket racket/rvenc/gen.rkt | unexpand > $@
+arch/riscv/net/bpf_jit.h: racket/riscv/encoding/bpf_jit.generated.c.rkt
+	$(QUIET_GEN)racket racket/riscv/encoding/gen.rkt | unexpand > $@
 
-arch/riscv/net/bpf_jit_comp32.c: racket/rv32/bpf_jit_comp32.c
+arch/riscv/net/bpf_jit_comp32.c: racket/riscv/rv32/bpf_jit_comp32.c
 	$(Q)mv $< $@
 
 %.c: %.generated.c

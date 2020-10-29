@@ -2,10 +2,10 @@
 
 (require
   "bpf_jit_comp32.rkt"
-  "../lib/bpf-common.rkt"
-  "../lib/hybrid-memory.rkt"
-  "../lib/spec/proof.rkt"
-  "../lib/spec/bpf.rkt"
+  "../../lib/bpf-common.rkt"
+  "../../lib/hybrid-memory.rkt"
+  "../../lib/spec/proof.rkt"
+  "../../lib/spec/bpf.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in x86: serval/x86))

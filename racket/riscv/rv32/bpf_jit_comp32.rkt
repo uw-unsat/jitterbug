@@ -1,10 +1,10 @@
 #lang rosette
 
 (require
-  "../lib/extraction/c.rkt"
-  "../lib/bpf-common.rkt"
-  "../lib/riscv-common.rkt"
-  "../lib/linux.rkt"
+  "../../lib/extraction/c.rkt"
+  "../../lib/bpf-common.rkt"
+  "../impl-common.rkt"
+  "../../lib/linux.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/interp)

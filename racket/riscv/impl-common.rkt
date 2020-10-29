@@ -13,7 +13,7 @@
   (prefix-in riscv: serval/riscv/interp)
   serval/lib/debug
   serval/lib/bvarith
-  "bpf-common.rkt")
+  "../lib/bpf-common.rkt")
 
 (provide (all-defined-out))
 

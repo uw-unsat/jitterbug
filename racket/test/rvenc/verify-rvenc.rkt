@@ -7,8 +7,8 @@
   (prefix-in riscv: serval/riscv/base)
   (prefix-in core: serval/lib/core)
   "../../lib/bvaxiom.rkt"
-  (prefix-in spec: "../../lib/riscv-common.rkt")
-  (prefix-in impl: "../../rvenc/bpf_jit.rkt"))
+  (prefix-in spec: "../../riscv/impl-common.rkt")
+  (prefix-in impl: "../../riscv/encoding/bpf_jit.rkt"))
 
 
 (define (check-enc spec impl . args)

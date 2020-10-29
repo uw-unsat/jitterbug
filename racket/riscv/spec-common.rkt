@@ -1,9 +1,9 @@
 #lang rosette
 
-(require "../hybrid-memory.rkt"
-         "../bpf-common.rkt"
-         "../riscv-common.rkt"
-         "bpf.rkt"
+(require "../lib/hybrid-memory.rkt"
+         "../lib/bpf-common.rkt"
+         "impl-common.rkt"
+         "../lib/spec/bpf.rkt"
          (prefix-in bpf: serval/bpf)
          (prefix-in riscv: serval/riscv/interp)
          (prefix-in core: serval/lib/core))

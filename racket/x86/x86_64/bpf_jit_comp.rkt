@@ -11,10 +11,10 @@
 ; Internal BPF Copyright (c) 2011-2014 PLUMgrid, http://plumgrid.com
 
 (require
-  "../lib/bpf-common.rkt"
-  "../lib/bvaxiom.rkt"
-  "../lib/x86-common.rkt"
-  "../lib/linux.rkt"
+  "../../lib/bpf-common.rkt"
+  "../../lib/bvaxiom.rkt"
+  "../common.rkt"
+  "../../lib/linux.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in x86: serval/x86))

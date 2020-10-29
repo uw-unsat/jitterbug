@@ -8,10 +8,10 @@
   (prefix-in riscv: serval/riscv/base)
   (prefix-in core: serval/lib/core)
   "../../lib/hybrid-memory.rkt"
-  "../../lib/spec/riscv.rkt"
+  "../../riscv/spec-common.rkt"
+  "../../riscv/impl-common.rkt"
   "../../lib/spec/proof.rkt"
-  "../../lib/spec/bpf.rkt"
-  "../../lib/riscv-common.rkt")
+  "../../lib/spec/bpf.rkt")
 
 (define (assert-rvc base-insn emit-fn . args)
   (define xlen (riscv:XLEN))

@@ -11,7 +11,7 @@
 
 (require
   serval/lib/bvarith
-  (only-in "../lib/extraction/c.rkt" 0x define-rvenc define-rvenc/16)
+  (only-in "../../lib/extraction/c.rkt" 0x define-rvenc define-rvenc/16)
   (prefix-in riscv: serval/riscv/base))
 
 (provide (except-out (all-defined-out) RV_REG_ZERO))

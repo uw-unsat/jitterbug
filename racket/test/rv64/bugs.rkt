@@ -2,7 +2,7 @@
 
 (require
   "../../lib/tests.rkt"
-  (only-in "../../rv64/spec.rkt" check-jit)
+  (only-in "../../riscv/rv64/spec.rkt" check-jit)
   (prefix-in bpf: serval/bpf)
   serval/lib/unittest)
 
