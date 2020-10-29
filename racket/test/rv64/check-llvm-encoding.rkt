@@ -6,7 +6,7 @@
   serval/lib/unittest
   serval/lib/bvarith
   "../../lib/bvaxiom.rkt"
-  "../../lib/riscv-common.rkt"
+  "../../riscv/impl-common.rkt"
   (prefix-in riscv: serval/riscv/decode)
   (prefix-in core: serval/lib/core)
   (only-in rosette/lib/angelic choose*)
