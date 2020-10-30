@@ -155,14 +155,14 @@ section machine
       step nd code₂ s1 s2 tr :=
   begin
     intros _ _ _ _ _ _ H1 H2,
-    cases H1,
-    apply step.step_one,
-    apply H2,
-    from H1_a,
-    by assumption,
-    by assumption,
-    apply step.step_final,
-    from H1_a,
+    cases H1 with H1_insn _ _ H1_a H1_a_1 H1_a_2 _ H1_a,
+    { apply step.step_one,
+      apply H2,
+      from H1_a,
+      by assumption,
+      by assumption },
+    { apply step.step_final,
+      from H1_a }
   end
 
   -- If you can star given some code, you can always
@@ -189,10 +189,10 @@ section machine
         tr = [] ∧ s' = s :=
   begin
     intros _ _ _ _ h1 _ _ h2,
-    cases h2,
-    exfalso, apply h2_a_2,
-    existsi o, by assumption,
-    cc,
+    cases h2 with _ _ _ h2_a h2_a_1 h2_a_2 _ h2_a,
+    { exfalso, apply h2_a_2,
+      existsi o, by assumption },
+    { cc }
   end
 
   lemma final_star :
@@ -215,15 +215,15 @@ section machine
       final s o →
       safe nd code s :=
   begin
-    dsimp [safe, machine.safe], intros, right,
-    induction a_1,
-    existsi o, by assumption,
-    apply a_1_ih,
-    cases a_1_a_1,
-    exfalso, apply a_1_a_1_a_2,
-    existsi o,
-    by assumption,
-    by assumption,
+    dsimp [safe, machine.safe], intros _ _ _ _ a _ _ a_1, right,
+    induction a_1 with _ _ _ _ _ _ a_1_a a_1_a_1,
+    { existsi o, by assumption },
+    { apply a_1_ih,
+      cases a_1_a with _ _ _ a_1_a_a a_1_a_a_1 a_1_a_a_2 _ a_1_a_a,
+      { exfalso, apply a_1_a_a_2,
+        existsi o,
+        assumption },
+      { assumption } }
   end
 
   -- A safe state can always take a step if it's not final.
@@ -234,7 +234,7 @@ section machine
       ∃ (insn : INSN),
         code (pc_of s) = some insn :=
   begin
-    intros,
+    intros _ _ _ a a_1,
     dsimp [safe] at *,
     specialize a s [] (by constructor),
     cases a with insn a,
@@ -265,7 +265,7 @@ section machine
       star nd code s₁ s₂ tr →
       safe nd code s₂ :=
   begin
-    intros,
+    intros _ _ _ _ _ a a_1,
     induction a_1, by assumption,
     apply a_1_ih,
     apply safe_step; assumption,
@@ -279,19 +279,18 @@ section machine
       step nd code s₁ s₂ tr →
       safe nd code s₁ :=
   begin
-    intros,
-    simp [safe] at *, intros,
-    cases a_2,
+    intros _ _ _ _ _ a a_1,
+    simp [safe] at *, intros _ _ a_2,
+    cases a_2 with _ _ _ _ _ _ a_2_a a_2_a_1,
     { cases a_1,
       left, existsi a_1_insn, by assumption,
-      right, existsi a_1_o, by assumption,
-    },
+      right, existsi a_1_o, by assumption },
     { apply a,
       suffices h : a_2_b = s₂,
+      rw h at *,
       { rw h at *,
-        by assumption,
-      },
-      cases (step_deterministic _ _ _ _ code _ _ _ _ _ a_2_a_1 a_1),
+        by assumption },
+      cases (step_deterministic _ _ _ _ code _ _ _ _ _ a_2_a a_1),
       by assumption,
     },
   end
@@ -303,7 +302,7 @@ section machine
       final s₂ o →
       safe nd code s₁ :=
   begin
-    intros,
+    intros _ _ _ _ _ _ a a_1,
     induction a,
     apply final_safe; assumption,
     apply safe_step_backwards; try{assumption},
@@ -326,13 +325,13 @@ section machine
         initial s ctx i →
         safe nd code s :=
   begin
-    intros,
+    intros _ _ _ _ a _ a_1,
     dsimp [always_terminates] at *,
     specialize a ctx nd s i a_1,
-    cases a,
-    cases a_h,
-    cases a_h_h,
-    cases a_h_h_h,
+    cases a with _ a,
+    cases a with _ a,
+    cases a with _ a,
+    cases a with _ a,
     apply machine.terminates_safe; assumption,
   end
 
@@ -666,14 +665,14 @@ begin
     cc,
   },
   { intros _ _ _ h4 h5,
-    cases h4 with _ _ _ h4_b h4_tr₁ h4_tr₂,
+    cases h4 with _ _ _ h4_b h4_tr₁ h4_tr₂ h4_a h4_a_1,
     { have : tr1 = [] ∧ s'' = s',
         by { apply machine.final_step, from h5, all_goals{assumption}},
       cases this, subst this_left, subst this_right,
       simp,
       apply IH; tauto,
     },
-    { cases (machine.step_deterministic _ _ _ _ code _ _ _ _ _ h4_a_1 h1),
+    { cases (machine.step_deterministic _ _ _ _ code _ _ _ _ _ h4_a h1),
       rw left at *,
       rw right at *,
       suffices : tr2 = h4_tr₂ ∧ s''' = σ'₂ ∧ o₁ = o₂, by tauto,
@@ -733,7 +732,7 @@ lemma backward_simulation :
         source.final σ_S' o ∧
         target.arch_safe σ_T σ_T' :=
 begin
-  intros _ _ _ _ _ _ _ _ _ _ wf_S terminates_S _ _ _ _ _,
+  intros _ _ _ _ _ _ _ _ _ _ wf_S terminates_S a a_1 a_2 a_3 a_4,
   let y := terminates_S,
   dsimp [source.always_terminates] at *,
   specialize terminates_S ctx nd σ_S i a_4,
@@ -799,7 +798,7 @@ theorem interpreter_equivalence :
         target.final σ_T' o)) :=
 begin
   intros _ _ _ _ _ _ _ _ _ wf_S sterm comp inits initt,
-  split; intros,
+  split; intros a,
   { cases a with σ_S' a,
     cases a with sstar sfinal,
     cases (forward_simulation ctx nd code_S σ_S σ_S' tr i o _ _ _ sstar sfinal σ_T code_T _ _)
