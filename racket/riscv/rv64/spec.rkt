@@ -2,7 +2,7 @@
 
 (require
   "bpf_jit_comp64.rkt"
-  "../../lib/linux.rkt"
+  "../../common.rkt"
   "../../lib/hybrid-memory.rkt"
   "../../lib/bpf-common.rkt"
   "../impl-common.rkt"

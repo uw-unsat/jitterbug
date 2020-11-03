@@ -11,7 +11,7 @@
 ; Copyright (C) 2014-2016 Zi Shen Lim <zlim.lnx@gmail.com>
 
 (require
-  "../lib/linux.rkt"
+  "../common.rkt"
   (prefix-in core: serval/lib/core))
 
 (provide

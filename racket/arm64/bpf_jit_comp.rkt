@@ -13,7 +13,7 @@
   "bpf_jit.rkt"
   "../lib/bpf-common.rkt"
   "../lib/spec/bpf.rkt"
-  "../lib/linux.rkt"
+  "../common.rkt"
   "../lib/bvaxiom.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf))

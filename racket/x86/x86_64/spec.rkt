@@ -6,7 +6,7 @@
   "../../lib/hybrid-memory.rkt"
   "../../lib/spec/proof.rkt"
   "../../lib/spec/bpf.rkt"
-  "../../lib/linux.rkt"
+  "../../common.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in x86: serval/x86))

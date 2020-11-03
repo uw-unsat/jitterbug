@@ -2,7 +2,7 @@
 
 (require
   "bpf_jit_comp32.rkt"
-  "../../lib/linux.rkt"
+  "../../common.rkt"
   "../../lib/spec/bpf.rkt"
   "../../lib/spec/proof.rkt"
   "../impl-common.rkt"

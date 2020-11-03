@@ -13,7 +13,7 @@
 (require
   "bpf_jit.rkt"
   "../lib/bpf-common.rkt"
-  "../lib/linux.rkt"
+  "../common.rkt"
   "../lib/patch.rkt"
   "../lib/spec/bpf.rkt"
   (prefix-in core: serval/lib/core)

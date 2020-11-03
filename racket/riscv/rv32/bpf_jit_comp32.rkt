@@ -4,7 +4,7 @@
   "../../lib/extraction/c.rkt"
   "../../lib/bpf-common.rkt"
   "../impl-common.rkt"
-  "../../lib/linux.rkt"
+  "../../common.rkt"
   (prefix-in core: serval/lib/core)
   (prefix-in bpf: serval/bpf)
   (prefix-in riscv: serval/riscv/interp)
