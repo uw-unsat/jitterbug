@@ -6,6 +6,9 @@ ifeq ($(shell which $(LLVM_CONFIG) 2> /dev/null),)
 LLVM_CONFIG     := /usr/local/opt/llvm/bin/llvm-config
 endif
 ifeq ($(shell which $(LLVM_CONFIG) 2> /dev/null),)
+LLVM_CONFIG     := /opt/homebrew/opt/llvm/bin/llvm-config
+endif
+ifeq ($(shell which $(LLVM_CONFIG) 2> /dev/null),)
 LLVM_PREFIX     :=
 else
 LLVM_PREFIX     := "$(shell $(LLVM_CONFIG) --bindir)/"

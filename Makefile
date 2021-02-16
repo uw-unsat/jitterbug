@@ -19,12 +19,12 @@ LDFLAGS :=
 
 #ifndef TOOLPREFIX
 RISCV_TOOLPREFIX      := $(shell \
-        if which riscv64-unknown-elf-gcc > /dev/null; \
+        if which riscv64-unknown-elf-ld > /dev/null; \
         then echo "riscv64-unknown-elf-"; \
-        elif which riscv64-linux-gnu-gcc > /dev/null; \
+        elif which riscv64-linux-gnu-ld > /dev/null; \
         then echo "riscv64-linux-gnu-"; \
         else \
-        echo "error: cannot find gcc for $(ARCH)" 1>&2; exit 1; fi)
+        echo "error: cannot find binutils for $(ARCH)" 1>&2; exit 1; fi)
 #endif
 
 verify-all: $(VERIFY_DEPS)
