@@ -6,5 +6,6 @@ compiled/
 *.ll.rkt
 *.elf
 *.globals.rkt
+*.map
 *.map.rkt
 .codemod.bookmark

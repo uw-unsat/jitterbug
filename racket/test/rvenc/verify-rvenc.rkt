@@ -12,19 +12,11 @@
 
 
 (define (check-enc spec impl . args)
-  (define-values (e asserted)
-    (with-asserts
-      (begin
-        (define spec-insn (apply spec args))
-        (define spec-bytes (riscv:instruction-encode spec-insn))
-        (define impl-bytes (apply impl args))
-        (assert (equal? spec-bytes impl-bytes))
-        (list spec-bytes impl-bytes))))
-  (check-equal? (asserts) null)
-  (define model (verify (assert (=> (apply && (assumptions)) (apply && asserted)))))
-  (when (sat? model)
-    (displayln (evaluate e model)))
-  (check-unsat? model))
+  (define spec-insn (apply spec args))
+  (define spec-bytes (riscv:instruction-encode spec-insn))
+  (define impl-bytes (apply impl args))
+  (assert (equal? spec-bytes impl-bytes))
+  (list spec-bytes impl-bytes))
 
 (define (choose-creg)
   (choose* 's0 's1 'a0 'a1 'a2 'a3 'a4 'a5))
@@ -105,8 +97,7 @@
         (syntax/loc stx
           (test-case+
             (format "VERIFY ~s" (syntax->datum #'op))
-            (parameterize ([assumptions null])
-              (check-enc spec-op impl-op args ...)))))]))
+            (check-enc spec-op impl-op args ...))))]))
 
 (define tests
   (test-suite+

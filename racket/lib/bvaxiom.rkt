@@ -9,13 +9,9 @@
 ; Replace bvmul/bvudiv/bvurem with UFs and theorems (proved in lemmas.lean),
 ; as they are expensive to reason about in SMT.
 
-(define assumptions (make-parameter null))
-
-(define (assume x) (assumptions (cons x (assumptions))))
-
 (define (commute f x y)
   (define e (equal? (f x y) (f y x)))
-  (assumptions (cons e (assumptions)))
+  (assume e)
   (f x y))
 
 ; Axiom for __ffs

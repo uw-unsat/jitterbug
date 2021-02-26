@@ -77,18 +77,18 @@
     (bvule (bpf-prog-aux-stack_depth prog-aux) (bv 512 32))))
 
   (parameterize ([enable-stack-addr-symopt #f])
-    (when pre
-      (define insns (emit-prologue ctx))
-      (run-jitted-code target-pc-base target-cpu insns)
-      (define regs (abstract-regs target-cpu))
-      (void)
 
-      (bug-assert (live-regs-equal? liveset (bpf:cpu-regs bpf-cpu) (abstract-regs target-cpu))
-                  #:msg "regs must be equivalent after prologue")
-      (bug-assert (arch-invariants ctx initial-cpu target-cpu)
-                  #:msg "CPU invariants must hold after running prologue")
-      (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
-                  #:msg "Prologue must not generate memory trace events")
-      ))
+    (assume pre)
+    (define insns (emit-prologue ctx))
+    (run-jitted-code target-pc-base target-cpu insns)
+    (define regs (abstract-regs target-cpu))
+    (void)
+
+    (bug-assert (live-regs-equal? liveset (bpf:cpu-regs bpf-cpu) (abstract-regs target-cpu))
+                #:msg "regs must be equivalent after prologue")
+    (bug-assert (arch-invariants ctx initial-cpu target-cpu)
+                #:msg "CPU invariants must hold after running prologue")
+    (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
+                #:msg "Prologue must not generate memory trace events"))
 
   null)

@@ -55,21 +55,20 @@
       ; BPF stack depth in bounds
       (bvule (bpf-prog-aux-stack_depth prog-aux) (bv 512 32))))
 
-    (when pre
-      (when (and (arch-invariants ctx initial-cpu target-cpu)
-                 (live-regs-equal? liveset (abstract-regs target-cpu) bpf-regs))
+    (assume pre)
+    (assume (arch-invariants ctx initial-cpu target-cpu))
+    (assume (live-regs-equal? liveset (abstract-regs target-cpu) bpf-regs))
 
-        (define bpf-return-value (trunc 32 (bpf:reg-ref bpf-cpu BPF_REG_0)))
-        (define insns (emit-epilogue ctx))
+    (define bpf-return-value (trunc 32 (bpf:reg-ref bpf-cpu BPF_REG_0)))
+    (define insns (emit-epilogue ctx))
 
-        (run-jitted-code target-pc-base target-cpu insns)
-        (bug-assert (equal? (abstract-return-value target-cpu) bpf-return-value)
-                    #:msg "Return value must match after running epilogue")
-        (bug-assert (arch-safety initial-cpu target-cpu)
-                    #:msg "Arch safety must hold after running epilogue")
-        (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
-                    #:msg "Epilogue must not generate memory trace events")
-        (void)
-      )))
+    (run-jitted-code target-pc-base target-cpu insns)
+    (bug-assert (equal? (abstract-return-value target-cpu) bpf-return-value)
+                #:msg "Return value must match after running epilogue")
+    (bug-assert (arch-safety initial-cpu target-cpu)
+                #:msg "Arch safety must hold after running epilogue")
+    (bug-assert (hybrid-memmgr-trace-equal? memmgr (core:gen-cpu-memmgr target-cpu))
+                #:msg "Epilogue must not generate memory trace events")
+    (void))
 
   null)

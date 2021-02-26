@@ -17,55 +17,25 @@
 (provide (all-defined-out))
 
 (define verify-fill-holes (make-parameter #f))
-(define verify-split-asserts (make-parameter #f))
 
 (define (@check-verify assocs asserted)
-  (check-equal? (asserts) null)
+  (check-true (vc-true? (vc)))
   (cond
     ; Use synthesis to filling in the holes, disabled by default.
     [(verify-fill-holes)
       (define sol
          (synthesize
            #:forall (bpf-symbolics)
-           #:guarantee (assert (apply && asserted))))
+           #:guarantee (assert asserted)))
       (check-sat? sol)
       (displayln sol)]
 
-    ; By default, verify asserts at once for better performance.
-    ; If verification fails, verify individual asserts again for
-    ; better debugging information (rather than "Unknown assert").
-    [(and (not (verify-split-asserts))
-          (unsat? (verify (assert (apply && asserted)))))
-     ; yay
-     (void)]
-
     [else
-     (define total (length asserted))
-     (define n 1)
-     (for ([e asserted])
-      (printf "Verifying assert ~v / ~v:\n" n total)
-      (set! n (add1 n))
-      ;;; (for ([bug (bug-ref e)])
-      ;;;   (displayln ((dict-ref bug 'message))))
-
-      (define model (verify (assert e)))
-      (define info (list))
-      (when (sat? model)
-        ; set the check-info stack
-        (set! info (map (lambda (p) (make-check-info (car p) (evaluate (cdr p) model))) assocs))
-        (define bugs (bug-ref e))
-        (when (null? bugs)
-          (printf "Unknown assert\n"))
-        (for ([bug bugs])
-          (displayln (bug-format bug model))))
-      (with-check-info*
-        info
-        (thunk (check-unsat? model))))]))
+      (check-unsat? (verify (assert asserted)))]))
 
 (define (@verify-bpf-jit code target)
   (parameterize
     ([solver-logic 'QF_UFBV]
-     [bvaxiom:assumptions null]
      [bpf-symbolics null])
     (define proc
       (case code
@@ -77,9 +47,11 @@
           (thunk (tail-call-correctness target))]
         [else
           (thunk
-            (per-insn-correctness code target
-              #:assumptions bvaxiom:assumptions))]))
-    (define-values (assocs asserted) (with-asserts (proc)))
+            (per-insn-correctness code target))]))
+    (define result (with-vc vc-true (proc)))
+    (check-true (normal? result) (format "Execution terminated abnormally:~n ~s" (result-value result)))
+    (define assocs (result-value result))
+    (define asserted (vc-asserts (result-state result)))
     (@check-verify assocs asserted)))
 
 (define (verify-bpf-jit/64 code target)
