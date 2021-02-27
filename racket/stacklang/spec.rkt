@@ -101,11 +101,11 @@
       (implies (&& (bvuge i edi)
                    (bvult i (hybrid-memmgr-stackbase stack-mm))
                    (core:bvaligned? i (bv 4 32)))
-        (equal? (core:memmgr-load x86-mm i (bv 0 32) (bv 4 32) #:dbg #f)
-                (core:memmgr-load stack-mm i (bv 0 32) (bv 4 32) #:dbg #f))))
+        (equal? (core:memmgr-load x86-mm i (bv 0 32) (bv 4 32))
+                (core:memmgr-load stack-mm i (bv 0 32) (bv 4 32)))))
     ; Top of stack matches
     (equal? (core:memmgr-load stack-mm (stacklang:cpu-sp stack-cpu)
-                              (bv 0 32) (bv 4 32) #:dbg #f)
+                              (bv 0 32) (bv 4 32))
             eax)
   ))
 

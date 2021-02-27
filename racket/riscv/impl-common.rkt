@@ -83,8 +83,7 @@
 ; Emit a compressed instruction
 (define (emitc insn ctx)
   (bug-on (! (rvc_enabled))
-          #:msg "Cannot use rvc instructions when !(rvc_enabled)"
-          #:dbg 'emitc)
+          #:msg "Cannot use rvc instructions when !(rvc_enabled)")
   (assert (= (riscv:instruction-size insn) 2))
   (for/all ([insns (context-insns ctx) #:exhaustive])
     (set-context-insns! ctx (vector-append insns (vector insn))))

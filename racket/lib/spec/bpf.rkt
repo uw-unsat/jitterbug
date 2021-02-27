@@ -258,7 +258,7 @@
 
   ; Load maximum number of map entries and check against index.
   (core:bug-on (! (heap-addr? mm *arr (bv 4 b))))
-  (define map-max-entries (core:memmgr-load mm *arr (bv 0 b) (bv 4 b) #:dbg #f))
+  (define map-max-entries (core:memmgr-load mm *arr (bv 0 b) (bv 4 b)))
 
   (cond
     [(|| (bvuge (trunc 32 idx) map-max-entries)
@@ -271,14 +271,14 @@
       (define *jump-addr
         (core:memmgr-load mm (bvadd *arr (bvmul idx (bv B b)))
                               (bv 8 b)
-                              (bv B b) #:dbg #f))
+                              (bv B b)))
 
       (cond
         [(bvzero? *jump-addr) (bpf:set-cpu-pc! cpu (bvadd1 pc)) (cons #f (bv 0 b))]
         [else
           ; Load the actual jump address and bump the tail call counter.
           (core:bug-on (! (heap-addr? mm *jump-addr (bv B b))))
-          (define jump-addr (core:memmgr-load mm *jump-addr (bv 0 b) (bv B b) #:dbg #f))
+          (define jump-addr (core:memmgr-load mm *jump-addr (bv 0 b) (bv B b)))
           (bpf:set-cpu-tail-call-cnt! cpu (bvadd1 (bpf:cpu-tail-call-cnt cpu)))
           (cons #t jump-addr)
   ])]))

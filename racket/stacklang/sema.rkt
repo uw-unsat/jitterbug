@@ -47,10 +47,10 @@
     ; At least two stack elements
     (assert (bvule sp (bvsub (hybrid-memmgr-stackbase mm) (bv 8 32))))
 
-    (define a (core:memmgr-load mm sp (bv 0 32) (bv 4 32) #:dbg #f))
-    (define b (core:memmgr-load mm sp (bv 4 32) (bv 4 32) #:dbg #f))
+    (define a (core:memmgr-load mm sp (bv 0 32) (bv 4 32)))
+    (define b (core:memmgr-load mm sp (bv 4 32) (bv 4 32)))
 
-    (core:memmgr-store! mm sp (bv 0 32) (bvsub a b) (bv 4 32) #:dbg #f)
+    (core:memmgr-store! mm sp (bv 0 32) (bvsub a b) (bv 4 32))
     (set-cpu-pc! cpu (bvadd1 (cpu-pc cpu))))])
 
 (struct swap () #:transparent
@@ -64,11 +64,11 @@
     ; At least two stack elements
     (assert (bvule sp (bvsub (hybrid-memmgr-stackbase mm) (bv 8 32))))
 
-    (define a (core:memmgr-load mm sp (bv 0 32) (bv 4 32) #:dbg #f))
-    (define b (core:memmgr-load mm sp (bv 4 32) (bv 4 32) #:dbg #f))
+    (define a (core:memmgr-load mm sp (bv 0 32) (bv 4 32)))
+    (define b (core:memmgr-load mm sp (bv 4 32) (bv 4 32)))
 
-    (core:memmgr-store! mm sp (bv 0 32) b (bv 4 32) #:dbg #f)
-    (core:memmgr-store! mm sp (bv 4 32) a (bv 4 32) #:dbg #f)
+    (core:memmgr-store! mm sp (bv 0 32) b (bv 4 32))
+    (core:memmgr-store! mm sp (bv 4 32) a (bv 4 32))
     (set-cpu-pc! cpu (bvadd1 (cpu-pc cpu))))])
 
 (struct push (i) #:transparent
@@ -87,8 +87,7 @@
 
     (when (! (inject-bugs))
       (core:memmgr-store! mm sp (bv 0 32)
-                          (zero-extend (push-i insn) (bitvector 32)) (bv 4 32)
-                          #:dbg #f))
+                          (zero-extend (push-i insn) (bitvector 32)) (bv 4 32)))
     (set-cpu-sp! cpu sp)
     (set-cpu-pc! cpu (bvadd1 (cpu-pc cpu))))])
 
@@ -112,8 +111,8 @@
     ; At least two stack elements
     (assert (bvule sp (bvsub (hybrid-memmgr-stackbase mm) (bv 8 32))))
 
-    (define a (core:memmgr-load mm sp (bv 0 32) (bv 4 32) #:dbg #f))
-    (define b (core:memmgr-load mm sp (bv 4 32) (bv 4 32) #:dbg #f))
+    (define a (core:memmgr-load mm sp (bv 0 32) (bv 4 32)))
+    (define b (core:memmgr-load mm sp (bv 4 32) (bv 4 32)))
 
     (if (equal? a b)
         (set-cpu-pc! cpu i32)
@@ -131,8 +130,8 @@
     ; At least two stack elements
     (assert (bvule sp (bvsub (hybrid-memmgr-stackbase mm) (bv 8 32))))
 
-    (define a (core:memmgr-load mm sp (bv 0 32) (bv 4 32) #:dbg #f))
-    (define b (core:memmgr-load mm sp (bv 4 32) (bv 4 32) #:dbg #f))
+    (define a (core:memmgr-load mm sp (bv 0 32) (bv 4 32)))
+    (define b (core:memmgr-load mm sp (bv 4 32) (bv 4 32)))
 
     (if (bvult a b)
         (set-cpu-pc! cpu i32)

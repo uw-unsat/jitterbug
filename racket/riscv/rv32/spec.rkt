@@ -27,7 +27,7 @@
   (define stackbase (hybrid-memmgr-stackbase memmgr))
   (define (loadreg i)
     (if (is_stacked i)
-      (core:memmgr-load memmgr (bvadd stackbase i) (bv 0 32) (bv 4 32) #:dbg #f)
+      (core:memmgr-load memmgr (bvadd stackbase i) (bv 0 32) (bv 4 32))
       (riscv:gpr-ref rv_cpu i)))
   (define loreg (bpf_to_rv_reg_lo bpf_reg))
   (define hireg (bpf_to_rv_reg_hi bpf_reg))
@@ -38,7 +38,7 @@
   (define stackbase (hybrid-memmgr-stackbase memmgr))
   (define (storereg i val)
     (if (is_stacked i)
-      (core:memmgr-store! memmgr (bvadd stackbase i) (bv 0 32) val (bv 4 32) #:dbg #f)
+      (core:memmgr-store! memmgr (bvadd stackbase i) (bv 0 32) val (bv 4 32))
       (riscv:gpr-set! rv_cpu i val)))
   (define loreg (bpf_to_rv_reg_lo bpf_reg))
   (define hireg (bpf_to_rv_reg_hi bpf_reg))
@@ -52,7 +52,7 @@
                #:msg "rv32-simulate-call: stack pointer must be aligned before function call")
 
   (define (loadfromstack off)
-    (core:memmgr-load memmgr (riscv:gpr-ref cpu 'sp) (bv off 32) (bv 4 32) #:dbg 'rv32-simulate-call))
+    (core:memmgr-load memmgr (riscv:gpr-ref cpu 'sp) (bv off 32) (bv 4 32)))
 
   (define args (list
     (concat (riscv:gpr-ref cpu 'a1) (riscv:gpr-ref cpu 'a0))
@@ -91,7 +91,7 @@
   (define (loadsavedreg off)
     (core:memmgr-load memmgr (hybrid-memmgr-stackbase memmgr)
                       (bv off 32)
-                      (bv 4 32) #:dbg 'rv32-arch-invariants))
+                      (bv 4 32)))
 
   (&&
     ; Program counter is aligned.

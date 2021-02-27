@@ -31,7 +31,7 @@
       (displayln sol)]
 
     [else
-      (check-unsat? (verify (assert asserted)))]))
+      (assert asserted)]))
 
 (define (@verify-bpf-jit code target)
   (parameterize

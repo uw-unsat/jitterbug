@@ -31,7 +31,7 @@
 
       ; Load one RISC-V "parcel" (16-bit instruction or instruction fragment) from offset "off"
       (define (loadparcel off)
-        (define path (core:mblock-path insns off (bv 2 64) #:dbg #f))
+        (define path (core:mblock-path insns off (bv 2 64)))
         (core:mblock-iload insns path))
 
       ; Load one instruction: uses ninsns to determine if 1 or 2 parcels
