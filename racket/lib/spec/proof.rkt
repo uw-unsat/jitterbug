@@ -16,23 +16,6 @@
 
 (provide (all-defined-out))
 
-(define verify-fill-holes (make-parameter #f))
-
-(define (@check-verify assocs asserted)
-  (check-true (vc-true? (vc)))
-  (cond
-    ; Use synthesis to filling in the holes, disabled by default.
-    [(verify-fill-holes)
-      (define sol
-         (synthesize
-           #:forall (bpf-symbolics)
-           #:guarantee (assert asserted)))
-      (check-sat? sol)
-      (displayln sol)]
-
-    [else
-      (assert asserted)]))
-
 (define (@verify-bpf-jit code target)
   (parameterize
     ([solver-logic 'QF_UFBV]
@@ -48,11 +31,7 @@
         [else
           (thunk
             (per-insn-correctness code target))]))
-    (define result (with-vc vc-true (proc)))
-    (check-true (normal? result) (format "Execution terminated abnormally:~n ~s" (result-value result)))
-    (define assocs (result-value result))
-    (define asserted (vc-asserts (result-state result)))
-    (@check-verify assocs asserted)))
+    (proc)))
 
 (define (verify-bpf-jit/64 code target)
   (parameterize

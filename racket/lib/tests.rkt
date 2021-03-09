@@ -19,7 +19,7 @@
     (test-case+ (format "BUG ~s" code) ;(with-jit-bug (proc code))))
       (let ([info #f])
         (with-handlers ([exn:test:check? (lambda (e) (set! info (exn:test:check-stack e)))])
-          (with-jit-bug (proc code)))
+          (with-jit-bug (verify/debug-proc (thunk (proc code)))))
         (check-pred list? info "missing bug")
         ; invoke extra checker
         (check (map (lambda (x) (cons (check-info-name x) (check-info-value x))) info))))))
