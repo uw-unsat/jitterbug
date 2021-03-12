@@ -44,7 +44,7 @@
     (define reg/off (hilo (bpf2ia32 k)))
     (if (equal? k BPF_REG_AX)
         (x86:cpu-gpr-ref x86 (x86:gpr32-no-rex (unbox reg/off)))
-        (core:memmgr-load mm ebp (sign-extend reg/off (bitvector 32)) (bv 4 32) #:dbg #f)))
+        (core:memmgr-load mm ebp (sign-extend reg/off (bitvector 32)) (bv 4 32))))
 
   (apply bpf:regs
          (for/list ([i (in-range MAX_BPF_JIT_REG)])
@@ -60,7 +60,7 @@
   (define mm (x86:cpu-memmgr cpu))
   (define stackbase (hybrid-memmgr-stackbase mm))
   (define (loadfromstack off)
-    (core:memmgr-load mm stackbase (bv off 32) (bv 4 32) #:dbg #f))
+    (core:memmgr-load mm stackbase (bv off 32) (bv 4 32)))
 
   (&&
     (equal? (x86:cpu-gpr-ref initial-cpu x86:ebp) (loadfromstack (- 8)))
@@ -132,7 +132,7 @@
   (define memmgr (x86:cpu-memmgr cpu))
 
   (define (loadfromstack off)
-    (core:memmgr-load memmgr (x86:cpu-gpr-ref cpu x86:esp) off (bv 4 32) #:dbg 'x86_32-simulate-call))
+    (core:memmgr-load memmgr (x86:cpu-gpr-ref cpu x86:esp) off (bv 4 32)))
 
   ; i386 calling convention.
   ; NB: Linux is compiled with -mregparm=3, so the first 64-bit argument is
@@ -187,7 +187,7 @@
   (define stackbase (hybrid-memmgr-stackbase mm))
   (&&
     (equal? (x86:cpu-gpr-ref Tfinal x86:esp) stackbase)
-    (equal? (x86:cpu-pc-ref Tfinal) (core:memmgr-load mm stackbase (bv -4 32) (bv 4 32) #:dbg #f))
+    (equal? (x86:cpu-pc-ref Tfinal) (core:memmgr-load mm stackbase (bv -4 32) (bv 4 32)))
     (apply && (for/list ([reg (list x86:edi x86:esi x86:ebp x86:ebx)])
       (equal? (x86:cpu-gpr-ref Tinitial reg) (x86:cpu-gpr-ref Tfinal reg))))))
 

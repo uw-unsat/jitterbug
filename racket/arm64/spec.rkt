@@ -78,7 +78,7 @@
   (define stack_depth (bpf-prog-aux-stack_depth aux))
 
   (define (loadfromstack off)
-    (core:memmgr-load mm stackbase (bv off 64) (bv 8 64) #:dbg 'arm64-arch-invariants))
+    (core:memmgr-load mm stackbase (bv off 64) (bv 8 64)))
 
   (&&
     (core:bvaligned? (arm64:cpu-sp-ref cpu) (bv 16 64))

@@ -37,25 +37,21 @@
     (run-jitted-code base cpu1 insns1))
 
   (for/all ([insns2 (context-insns ctx2) #:exhaustive])
-    (run-jitted-code base cpu2 insns2)
+    (run-jitted-code base cpu2 insns2))
 
+    ; Assume equal before
+    (assume equal-before?)
     ; Traces must match
-    (assert (=> equal-before?
-                (hybrid-memmgr-trace-equal? (riscv:cpu-memmgr cpu1)
-                                            (riscv:cpu-memmgr cpu2))))
+    (assert (hybrid-memmgr-trace-equal? (riscv:cpu-memmgr cpu1)
+                                        (riscv:cpu-memmgr cpu2)))
 
     ; Regs must be equal
-    (define equal-after? (equal? (riscv:cpu-gprs cpu1) (riscv:cpu-gprs cpu2)))
-    (assert (=> equal-before? equal-after?))))
+    (assert (equal? (riscv:cpu-gprs cpu1) (riscv:cpu-gprs cpu2))))
 
 (define (check-rvc . args)
-  (define e (with-asserts-only (apply assert-rvc args)))
-  (define total (length e))
-  (define n 1)
-  (for ([a e])
-    (printf "Solving ~v/~v.\n" n total)
-    (set! n (add1 n))
-    (check-unsat? (verify (assert a)))))
+  (define r (with-vc vc-true (apply assert-rvc args)))
+  (check-true (normal? r))
+  (check-unsat? (verify (assert (vc-asserts (result-state r))))))
 
 (define (choose-reg)
   (choose* 'x0 'x1 'x2 'x3 'x4 'x5 'x6 'x7 'x8 'x9

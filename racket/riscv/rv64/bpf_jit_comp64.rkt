@@ -95,7 +95,6 @@
 
       (cond
         [(|| (is_32b_int val64) (<= (core:bv-size val) 32))
-          (assert (is_32b_int val64))
           (cond
             [(bvzero? upper)
               (emit_li rd (core:trunc 32 lower) ctx)]

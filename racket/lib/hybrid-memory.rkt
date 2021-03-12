@@ -94,7 +94,7 @@
       [(expression (== zero-extend) x _) (stack-addr-symopt? memmgr x size)]
       [_ #f])))
 
-(define (hybrid-memmgr-stack-store! memmgr addr off data size #:dbg dbg)
+(define (hybrid-memmgr-stack-store! memmgr addr off data size)
   (define N (bitvector->natural size))
   (define bitwidth (hybrid-memmgr-bitwidth memmgr))
   (define address (make-address memmgr addr off size))
@@ -109,18 +109,18 @@
   (define newf (lambda (p) (if (equal? p address) data (oldf p))))
   (set-hybrid-memmgr-stack! memmgr newf))
 
-(define (hybrid-memmgr-store! memmgr addr off data size #:dbg dbg)
+(define (hybrid-memmgr-store! memmgr addr off data size)
   (define stackbase (hybrid-memmgr-stackbase memmgr))
   (define address (make-address memmgr addr off size))
 
   (cond
     [(and (enable-stack-addr-symopt) (stack-addr-symopt? memmgr address size))
       (core:bug-assert (stack-addr? memmgr address size)
-                  #:msg "stack-addr-symopt? Must return #t only for actual stack addresses" #:dbg dbg)
-      (hybrid-memmgr-stack-store! memmgr addr off data size #:dbg dbg)]
+                  #:msg "stack-addr-symopt? Must return #t only for actual stack addresses")
+      (hybrid-memmgr-stack-store! memmgr addr off data size)]
 
     [(and (not (enable-stack-addr-symopt)) (stack-addr? memmgr address size))
-      (hybrid-memmgr-stack-store! memmgr addr off data size #:dbg dbg)]
+      (hybrid-memmgr-stack-store! memmgr addr off data size)]
 
     [(heap-addr? memmgr address size) ; To the rest of memory
 
@@ -134,9 +134,9 @@
       ; Generate trace of stores.
       (breakdown-trace-event address N bitwidth data
                              (lambda e (hybrid-memmgr-trace-event! memmgr (apply store-event e))))]
-    [else (core:bug #:msg "hybrid-memmgr-load: address cannot overlap stack+heap" #:dbg dbg)]))
+    [else (core:bug #:msg "hybrid-memmgr-load: address cannot overlap stack+heap")]))
 
-(define (hybrid-memmgr-stack-load memmgr addr off size #:dbg dbg)
+(define (hybrid-memmgr-stack-load memmgr addr off size)
   (define N (bitvector->natural size))
   (define bitwidth (hybrid-memmgr-bitwidth memmgr))
   (define address (make-address memmgr addr off size))
@@ -153,18 +153,18 @@
   (set-hybrid-memmgr-memory! memmgr rest)
   data)
 
-(define (hybrid-memmgr-load memmgr addr off size #:dbg dbg)
+(define (hybrid-memmgr-load memmgr addr off size)
   (define stackbase (hybrid-memmgr-stackbase memmgr))
   (define address (make-address memmgr addr off size))
 
   (cond
     [(and (enable-stack-addr-symopt) (stack-addr-symopt? memmgr address size))
       (core:bug-assert (stack-addr? memmgr address size)
-              #:msg "stack-addr-symopt? Must return #t only for actual stack addresses" #:dbg dbg)
-      (hybrid-memmgr-stack-load memmgr addr off size #:dbg dbg)]
+              #:msg "stack-addr-symopt? Must return #t only for actual stack addresses")
+      (hybrid-memmgr-stack-load memmgr addr off size)]
 
     [(and (not (enable-stack-addr-symopt)) (stack-addr? memmgr address size))
-      (hybrid-memmgr-stack-load memmgr addr off size #:dbg dbg)]
+      (hybrid-memmgr-stack-load memmgr addr off size)]
 
     [(heap-addr? memmgr address size) ; To the rest of memory
 
@@ -180,7 +180,7 @@
                              (lambda e (hybrid-memmgr-trace-event! memmgr (apply load-event e))))
 
       value]
-    [else (core:bug #:msg "hybrid-memmgr-load: address cannot overlap stack+heap" #:dbg dbg)]))
+    [else (core:bug #:msg "hybrid-memmgr-load: address cannot overlap stack+heap")]))
 
 (define (make-hybrid-memmgr bitwidth size stacksize #:bpf-stack-range [bpf-stack-range #f])
 

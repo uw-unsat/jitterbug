@@ -128,20 +128,18 @@
   (define s null)
 
   ; Get JIT correctness definition.
-  (define asserted (with-asserts-only
+  (define r (with-vc vc-true
     (per-insn-correctness
       op
       (struct-copy bpf-target target [emit-insn emit_insn]
-                                     [select-bpf-regs synthesis-select-bpf-regs])
-      #:assumptions (thunk null))))
+                                     [select-bpf-regs synthesis-select-bpf-regs]))))
 
-  ; Sanity check
-  (check-equal? (asserts) null)
+  (assert (normal? r))
 
   (define sol
     (synthesize
     #:forall (bpf-symbolics)
-    #:guarantee (assert (apply && asserted))))
+    #:guarantee (assert (vc-asserts (result-state r)))))
 
   (if (sat? sol)
     (evaluate jit (complete-solution sol (symbolics jit)))

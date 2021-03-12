@@ -62,7 +62,7 @@
   (define (loadsavedreg off)
     (core:memmgr-load mm (hybrid-memmgr-stackbase mm)
                       (bv off 64)
-                      (bv 8 64) #:dbg 'rv64-arch-invariants))
+                      (bv 8 64)))
 
   (&&
     ; Upper bits of tail-call counter are sign extension of lower

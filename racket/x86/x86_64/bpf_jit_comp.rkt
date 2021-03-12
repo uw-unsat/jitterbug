@@ -38,7 +38,7 @@
     (cond
       [(list? v) (map (lambda (x) (if (bv? x) (extract 7 0 x) (bv x 8))) v)]
       [(bv? v) (core:bitvector->list/le v)]
-      [else (core:bug (format "emit: ~a" v))]))
+      [else (core:bug #:msg (format "emit: ~a" v))]))
   (emit_code (current-context) (take lst n)))
 
 (define (EMIT1 b1) (EMIT (list b1) 1))

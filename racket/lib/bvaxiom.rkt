@@ -5,33 +5,30 @@
 
 (provide (all-defined-out))
 
+(define bvassumptions (make-parameter null))
 
 ; Replace bvmul/bvudiv/bvurem with UFs and theorems (proved in lemmas.lean),
 ; as they are expensive to reason about in SMT.
 
-(define assumptions (make-parameter null))
-
-(define (assume x) (assumptions (cons x (assumptions))))
+(define (bvassume c)
+  (bvassumptions (cons c (bvassumptions))))
 
 (define (commute f x y)
   (define e (equal? (f x y) (f y x)))
-  (assumptions (cons e (assumptions)))
+  (bvassume e)
   (f x y))
 
 ; Axiom for __ffs
 
 (define (ffs-uf x)
-  (define-symbolic ffs (~> (bitvector 64) (bitvector 64)))
+  (define-symbolic* ffs-x (bitvector 64))
   ; __ffs(x) is undefined when x == 0
   (assert (! (bvzero? x)))
-  (define res (ffs x))
-  ; __ffs(x) < 64
-  (assume (bvult (ffs x) (bv 64 64)))
-  ; ((x >> __ffs(x)) << __ffs(x)
-  (assume (bveq (bvshl (bvlshr x (ffs x)) (ffs x)) x))
-  ; the ffs bit is non-zero
-  (assume (! (bvzero? (core:bv-bit (ffs x) x))))
-  (ffs x))
+  ; Assume lower `ffs-x` bits are zero.
+  (bvassume (bvzero? (bvand x (bvsub1 (bvshl (bv 1 64) ffs-x)))))
+  ; Assume bit at `ffs-x` is one.
+  (bvassume (! (bvzero? (bvand x (bvshl (bv 1 64) ffs-x)))))
+  ffs-x)
 
 ; Axiom shared by 32- and 64-bit JITs.
 

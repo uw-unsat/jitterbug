@@ -47,7 +47,7 @@
       (core:memmgr-load mm
                         (bvadd (arm32:cpu-gpr-ref cpu ARM_FP)
                                (sign-extend (EBPF_SCRATCH_TO_ARM_FP i) (bitvector 32)))
-                        (bv 0 32) (bv 4 32) #:dbg #f)
+                        (bv 0 32) (bv 4 32))
       (arm32:cpu-gpr-ref cpu i)))
   (apply bpf:regs
     (for/list [(i (in-range MAX_BPF_JIT_REG))]
@@ -95,7 +95,7 @@
   (define mm (arm32:cpu-memmgr cpu))
   (define stackbase (hybrid-memmgr-stackbase mm))
   (define (loadsavedreg off)
-    (core:memmgr-load mm stackbase (bv (- off 4) 32) (bv 4 32) #:dbg 'arm32-arch-invariants))
+    (core:memmgr-load mm stackbase (bv (- off 4) 32) (bv 4 32)))
 
   (&&
     ; PC is aligned.
@@ -139,7 +139,7 @@
 (define (arm32-simulate-call cpu call-addr call-fn)
   (define memmgr (arm32:cpu-memmgr cpu))
   (define (loadfromstack off)
-    (core:memmgr-load memmgr (arm32:cpu-gpr-ref cpu ARM_SP) off (bv 4 32) #:dbg 'arm32-simulate-call))
+    (core:memmgr-load memmgr (arm32:cpu-gpr-ref cpu ARM_SP) off (bv 4 32)))
 
   (define args (list
     (concat (arm32:cpu-gpr-ref cpu (arm32:integer->gpr 1)) (arm32:cpu-gpr-ref cpu (arm32:integer->gpr 0)))

@@ -101,11 +101,11 @@
       (implies (&& (bvuge i edi)
                    (bvult i (hybrid-memmgr-stackbase stack-mm))
                    (core:bvaligned? i (bv 4 32)))
-        (equal? (core:memmgr-load x86-mm i (bv 0 32) (bv 4 32) #:dbg #f)
-                (core:memmgr-load stack-mm i (bv 0 32) (bv 4 32) #:dbg #f))))
+        (equal? (core:memmgr-load x86-mm i (bv 0 32) (bv 4 32))
+                (core:memmgr-load stack-mm i (bv 0 32) (bv 4 32)))))
     ; Top of stack matches
     (equal? (core:memmgr-load stack-mm (stacklang:cpu-sp stack-cpu)
-                              (bv 0 32) (bv 4 32) #:dbg #f)
+                              (bv 0 32) (bv 4 32))
             eax)
   ))
 
@@ -150,19 +150,21 @@
           ; Every other instruction (i.e., those with semantics in the source)
 
           ; Run the source semantics and capture any generated assertions.
-          (define-values (result asserted)
-            (with-asserts (begin
-              (stacklang:interpret-insn insn stacklang-cpu))))
+          (define r (with-vc (stacklang:interpret-insn insn stacklang-cpu)))
+          (assert (normal? r))
+          (define result (result-value r))
+          ; Assume safe execution of stacklang instruction.
+          (assume (vc-assumes (result-state r)))
+          (assume (vc-asserts (result-state r)))
 
-          (when (&& ; Safely executed stacklang instruction
-                    (apply && asserted)
-                    ; Next instruction is in right place
-                    (equal? (addr ctx (bvadd1 stacklang-pc))
-                            (bvadd (integer->bitvector (code-size jited-code) (bitvector 32))
-                                  (addr ctx stacklang-pc))))
 
-            ; Run the generated code.
-            (run-jitted-code base-addr x86-cpu jited-code)
+          ; Assume next instruction is in right place
+          (assume (equal? (addr ctx (bvadd1 stacklang-pc))
+                          (bvadd (integer->bitvector (code-size jited-code) (bitvector 32))
+                                 (addr ctx stacklang-pc))))
 
-            ; Assert invariants continue to hold.
-            (assert (arch-invariants ctx stacklang-cpu x86-cpu)))]))))
+          ; Run the generated code.
+          (run-jitted-code base-addr x86-cpu jited-code)
+
+          ; Assert invariants continue to hold.
+          (assert (arch-invariants ctx stacklang-cpu x86-cpu))]))))

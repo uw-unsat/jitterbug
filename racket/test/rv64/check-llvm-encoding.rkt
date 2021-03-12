@@ -31,7 +31,7 @@
 
       ; Load one RISC-V "parcel" (16-bit instruction or instruction fragment) from offset "off"
       (define (loadparcel off)
-        (define path (core:mblock-path insns off (bv 2 64) #:dbg #f))
+        (define path (core:mblock-path insns off (bv 2 64)))
         (core:mblock-iload insns path))
 
       ; Load one instruction: uses ninsns to determine if 1 or 2 parcels
@@ -116,20 +116,22 @@
     (extend arg (bitvector size))))
 
 (define (check-encoding llvm-func serval-func args argspecs)
-  (when (apply && (assumptions))
-    (define llvm-encoding
-      (parameterize
-        ([llvm:current-machine (llvm:make-machine jit:symbols jit:globals)])
-          (apply llvm-func (map make-llvm-arg args argspecs))))
+  (define llvm-encoding
+    (parameterize
+      ([llvm:current-machine (llvm:make-machine jit:symbols jit:globals)])
+        (apply llvm-func (map make-llvm-arg args argspecs))))
 
-    (define serval-encoding (riscv:instruction-encode (apply serval-func args)))
+  (define serval-encoding (riscv:instruction-encode (apply serval-func args)))
 
-    (assert (bveq llvm-encoding serval-encoding))
-    (list llvm-encoding serval-encoding)))
+  (assert (bveq llvm-encoding serval-encoding))
+  (list llvm-encoding serval-encoding))
 
 (define (verify-encoding . args)
-  (define-values (encodings as) (with-asserts (apply check-encoding args)))
-  (define model (verify (assert (apply && as))))
+  (define result (with-vc vc-true (apply check-encoding args)))
+  (check-true (normal? result))
+  (define as (vc-asserts (result-state result)))
+  (define encodings (result-value result))
+  (define model (verify (assert as)))
   (when (sat? model)
     (printf "LLVM: ~v vs. Serval: ~v\n" (evaluate (first encodings) model) (evaluate (second encodings) model))
     (printf "Args: ~v\n" (evaluate (drop args 2) model)))
@@ -143,8 +145,7 @@
         (syntax/loc stx
           (test-case+ (format "VERIFY ~s encoding" (syntax->datum #'id))
             (with-prefer-boolector
-              (parameterize ([assumptions null])
-               (verify-encoding llvm-func serval-func args argspec))))))]))
+              (verify-encoding llvm-func serval-func args argspec)))))]))
 
 (define-syntax-rule (rtype-encoding-test-case id)
   (encoding-test-case id (list (choose-reg) (choose-reg) (choose-reg)) '(u8 u8 u8)))
