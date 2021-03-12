@@ -21,6 +21,8 @@
   (implies (! (bvzero? x))
     (&& (bveq (bvshl (bvlshr x (__ffs x)) (__ffs x)) x)
         (! (bvzero? (bv-bit (__ffs x) x)))
+        (bvzero? (bvand x (bvsub1 (bvshl (bv 1 64) (__ffs x)))))
+        (! (bvzero? (bvand x (bvshl (bv 1 64) (__ffs x)))))
         (bvult (__ffs x) (bv 64 64))))))
 
 ; bvmul is commutative

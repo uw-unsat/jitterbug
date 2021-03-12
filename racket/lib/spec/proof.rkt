@@ -19,6 +19,7 @@
 (define (@verify-bpf-jit code target)
   (parameterize
     ([solver-logic 'QF_UFBV]
+     [bvaxiom:bvassumptions null]
      [bpf-symbolics null])
     (define proc
       (case code

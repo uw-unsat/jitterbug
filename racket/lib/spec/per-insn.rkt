@@ -218,7 +218,8 @@
   (bug-assert (equal? (bpf:cpu-tail-call-cnt bpf-cpu) (abstract-tail-call-cnt target-cpu))
               #:msg "per-insn-correctness: Tail call count must match.")
 
-  (bug-assert (live-regs-equal? liveset (bpf:cpu-regs bpf-cpu) target-bpf-regs)
+  (bug-assert (=> (apply && (bvaxiom:bvassumptions))
+                  (live-regs-equal? liveset (bpf:cpu-regs bpf-cpu) target-bpf-regs))
               #:msg "per-insn-correctness: Final registers must match")
 
   (bug-assert (hybrid-memmgr-trace-equal? (bpf:cpu-memmgr bpf-cpu) (core:gen-cpu-memmgr target-cpu))
