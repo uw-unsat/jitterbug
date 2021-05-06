@@ -253,8 +253,7 @@ section machine
     intros _ _ _ _ _ H1 _,
     simp [safe] at *,
     intros _ _ _,
-    specialize H1 _ (tr ++ tr_1),
-    apply H1,
+    apply H1 _ (tr ++ tr_1),
     constructor; assumption,
   end
 

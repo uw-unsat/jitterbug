@@ -1,6 +1,6 @@
 FROM unsat/serval-tools:latest
 
-ARG LEAN_VERSION=v3.26.0
+ARG LEAN_VERSION=v3.30.0
 
 # Install some dependencies
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \

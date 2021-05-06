@@ -193,14 +193,14 @@ lemma zero_to_nat : ∀ {n : ℕ}, ((0 : bv n) : ℕ) = 0
 | 0       := rfl
 | (n + 1) := calc ((0 : bv (n + 1)) : ℕ)
     = (cons ff (0 : bv n) : ℕ) : by push_cast; refl
-... = 0 : by push_cast; simp [zero_to_nat]
+... = 0 : by push_cast; simpa [zero_to_nat]
 
 @[norm_cast]
 lemma umax_to_nat : ∀ {n : ℕ}, ((bv.umax : bv n) : ℕ) = 2^n - 1
 | 0       := rfl
 | (n + 1) := calc ((bv.umax : bv (n + 1)) : ℕ)
       = ((cons tt (bv.umax : bv n)) : ℕ) : by push_cast; refl
-  ... = 2 * (2^n - 1 + 1) - 1: by push_cast [bit_val, umax_to_nat]; ring
+  ... = 2 * (2^n - 1 + 1) - 1: by push_cast [bit_val, umax_to_nat]; ring_nf
   ... = 2^(n + 1) - 1 : by rw [nat.sub_add_cancel (pow2_pos _)]; ring_exp
 
 @[norm_cast, simp]
@@ -497,8 +497,9 @@ protected lemma add_left_neg (v : bv n) : -v + v = 0 :=
 begin
   push_cast [← to_nat_inj],
   cases eq.decidable (v : ℕ) 0 with h h; simp [h],
-  rw nat.sub_add_cancel; simp,
-  apply le_of_lt (to_nat_lt _)
+  rw nat.sub_add_cancel,
+  { simp [mod_self] },
+  { apply le_of_lt (to_nat_lt _) }
 end
 
 protected lemma mul_comm (v₁ v₂ : bv n) : v₁ * v₂ = v₂ * v₁ :=
