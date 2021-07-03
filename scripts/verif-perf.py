@@ -29,7 +29,7 @@ architectures = [
     "x86_32",
 ]
 
-time_re = re.compile(r"\[       OK \] \"VERIFY \((.+)\)\" \((.+) ms\) \((.+) terms\)")
+time_re = re.compile(r"\[       OK \] \"VERIFY \((.+)\)\" \((.+)ms cpu\) \((.+)ms real\) \((.+) terms\)")
 
 
 def get_proc_one_architecture(arch):
@@ -47,14 +47,15 @@ def run(arch):
         match = re.match(time_re, line)
         if match:
             instr = match.group(1)
-            time = match.group(2)
-            terms = match.group(3)
-            result = f"{arch}, {instr}, {time}, {terms}\n"
+            cputime = match.group(2)
+            realtime = match.group(3)
+            terms = match.group(4)
+            result = f"{arch}, {instr}, {cputime}, {realtime}, {terms}\n"
             print(result, end="")
             outfile.write(result)
 
 
-outfile.write("arch, instr, time(ms), terms\n")
+outfile.write("arch, instr, cputime, realtime, terms\n")
 for arch in architectures:
     run(arch)
 outfile.close()
