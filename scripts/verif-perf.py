@@ -21,20 +21,20 @@ dry_run = args.dry_run
 outfile = output
 
 architectures = [
-    "arm32",
-    "arm64",
-    "x86_32",
-    "x86_64",
-    "rv32",
     "rv64",
+    "rv32",
+    "arm64",
+    "arm32",
+    "x86_64",
+    "x86_32",
 ]
 
-time_re = re.compile(r"\[       OK \] \"VERIFY \((.+)\)\" \((.+) ms\)")
+time_re = re.compile(r"\[       OK \] \"VERIFY \((.+)\)\" \((.+) ms\) \((.+) terms\)")
 
 
 def get_proc_one_architecture(arch):
     cmd = "echo" if dry_run else "make"
-    args = ["VERIFY_JOBS=1", f"verify-{arch}"]
+    args = ["RACO_JOBS=1", f"verify-{arch}"]
     return subprocess.run([cmd, *args], capture_output=True, encoding="utf8", check=True)
 
 
@@ -48,12 +48,13 @@ def run(arch):
         if match:
             instr = match.group(1)
             time = match.group(2)
-            result = f"{arch}, {instr}, {time}\n"
+            terms = match.group(3)
+            result = f"{arch}, {instr}, {time}, {terms}\n"
             print(result, end="")
             outfile.write(result)
 
 
-outfile.write("arch, instr, time(ms)\n")
+outfile.write("arch, instr, time(ms), terms\n")
 for arch in architectures:
     run(arch)
 outfile.close()
