@@ -52,7 +52,7 @@ We have used this tool to aid the development in the following ways:
 
 ## How to install dependencies
 
-- Download and install [Racket] (tested on v7.8-cs).
+- Download and install [Racket] (tested on v8.9).
 
 - Uninstall any previous versions of Serval:
 
@@ -64,8 +64,8 @@ raco pkg remove serval
 BPF JIT verification and synthesis:
 
 ```sh
-git clone --recursive 'https://github.com/uw-unsat/serval-bpf.git'
-cd serval-bpf
+git clone --recursive 'https://github.com/uw-unsat/jitterbug.git'
+cd jitterbug
 raco pkg install --auto ./serval
 ```
 
