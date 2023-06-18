@@ -1,6 +1,7 @@
 
 import .basic
 import .helper
+import data.list.of_fn
 
 namespace bv
 open nat
@@ -120,14 +121,14 @@ lemma to_nat_le : ∀ {n : ℕ} (v : bv n),
 | (n + 1) v := calc (v : ℕ)
       = (v.init : ℕ) + 2^n * cond v.msb 1 0 : by norm_cast; simp
   ... ≤ 2^n - 1 + 2^n * cond v.msb 1 0 : by mono
-  ... ≤ 2^n - 1 + 2^n : by cases v.msb; simp
+  ... ≤ 2^n - 1 + 2^n : by simp only [add_le_add_iff_left, mul_le_iff_le_one_right]; cases v.msb; simp
   ... = 2^(n + 1) - 1 : by rw ← nat.sub_add_comm (pow2_pos _); ring_exp
 
 lemma to_nat_lt (v : bv n) :
   (v : ℕ) < 2^n :=
 calc v.to_nat
     ≤ 2^n - 1 : to_nat_le _
-... < 2^n : sub_lt (pow2_pos _) one_pos
+... < 2^n : nat.sub_lt (pow2_pos _) nat.one_pos
 
 @[simp]
 lemma to_nat_mod_eq (v : bv n) :
@@ -142,7 +143,7 @@ lemma to_of_nat : ∀ (n a : ℕ),
       = bit a.bodd ↑(@of_nat n a.div2) : by norm_cast
   ... = bit a.bodd (a.div2 % 2^n) : by rw to_of_nat
   ... = 2 * (a / 2 % 2^n) + a % 2 : by rw [bit_val, div2_val, mod_two_of_bodd]
-  ... = a % 2^(n + 1) : by rw nat.mod_pow_succ two_pos
+  ... = a % 2^(n + 1) : by rw nat.mod_pow_succ
 
 @[simp]
 lemma of_to_nat : ∀ {n : ℕ} (v : bv n),
@@ -335,7 +336,7 @@ lemma take_to_nat : ∀ {n₁ n₂ : ℕ} (v : bv (n₁ + n₂)),
 | _ (n₂ + 1) v := by
   { rw [← cons_lsb_tail v, take_cons],
     push_cast,
-    simp [take_to_nat, mod_pow_succ two_pos, ← bit_val] }
+    simp [take_to_nat, mod_pow_succ, ← bit_val] }
 
 lemma concat_drop_take {n₁ n₂ : ℕ} (v : bv (n₁ + n₂)) :
   concat (drop n₂ v) (take n₂ v) = v :=
@@ -405,7 +406,7 @@ begin
   push_cast [h, bv.neg],
   cases eq.decidable (v : ℕ) 0 with h h; simp [h],
   apply mod_eq_of_lt,
-  apply sub_lt (pow2_pos _) (nat.pos_of_ne_zero h)
+  apply nat.sub_lt (pow2_pos _) (nat.pos_of_ne_zero h)
 end
 
 @[norm_cast]

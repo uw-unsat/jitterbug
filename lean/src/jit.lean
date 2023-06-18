@@ -146,12 +146,12 @@ section machine
     ∀ (idx : PC) (insn : INSN),
       c1 idx = some insn →
       c2 idx = some insn
-  local infix ` <+ ` := subset
+  local infix ` ⊆+ `:50 := subset
 
   lemma step_subset :
     ∀ (nd : ORACLE) (code₁ code₂ : CODE) (s1 s2 : STATE) (tr : TRACE),
       step nd code₁ s1 s2 tr →
-      code₁ <+ code₂ →
+      code₁ ⊆+ code₂ →
       step nd code₂ s1 s2 tr :=
   begin
     intros _ _ _ _ _ _ H1 H2,
@@ -170,7 +170,7 @@ section machine
   lemma star_subset :
     ∀ (nd : ORACLE) (code₁ code₂ : CODE) (s1 s2 : STATE) (tr : TRACE),
       star nd code₁ s1 s2 tr →
-      code₁ <+ code₂ →
+      code₁ ⊆+ code₂ →
       star nd code₂ s1 s2 tr :=
   begin
     intros _ _ _ _ _ _ H1 _,
@@ -338,7 +338,7 @@ end machine
 end machine
 
 -- Re-declare infix notation outside of machine scope.
-local infix ` <+ ` := machine.subset
+local infix ` ⊆+ `:50 := machine.subset
 
 constants CONTEXT EVENT ORACLE INPUT OUTPUT : Type
 
@@ -426,9 +426,9 @@ namespace jit
       (∀ (i : source.PC) (insn : source.INSN),
         code_S i = some insn →
         ∃ (frag_T : target.CODE),
-          jit.emit_insn ctx insn i = some frag_T ∧ frag_T <+ code_T) ∧
-      (∃ (frag_T : target.CODE), jit.emit_prologue ctx = some frag_T ∧ frag_T <+ code_T) ∧
-      (∃ (frag_T : target.CODE), jit.emit_epilogue ctx = some frag_T ∧ frag_T <+ code_T)
+          jit.emit_insn ctx insn i = some frag_T ∧ frag_T ⊆+ code_T) ∧
+      (∃ (frag_T : target.CODE), jit.emit_prologue ctx = some frag_T ∧ frag_T ⊆+ code_T) ∧
+      (∃ (frag_T : target.CODE), jit.emit_epilogue ctx = some frag_T ∧ frag_T ⊆+ code_T)
 
 end jit
 
@@ -516,7 +516,7 @@ begin
   tactic.swap,
   { apply IH; assumption, },
 
-  have hemit : ∃ f_T, jit.emit_insn ctx insn (source.pc_of s1) = some f_T ∧ f_T <+ code_T,
+  have hemit : ∃ f_T, jit.emit_insn ctx insn (source.pc_of s1) = some f_T ∧ f_T ⊆+ code_T,
   {
     cases (jit.layout_consistency ctx code_S code_T wf_S emitted),
     apply left; assumption,

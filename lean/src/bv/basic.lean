@@ -1,5 +1,5 @@
-import data.fin
-import data.fintype.basic
+import data.fin.tuple.basic
+import data.fintype.pi
 import tactic.omega.main
 
 /-!
@@ -24,9 +24,6 @@ section fin
 variable {n : ℕ}
 
   def nil : bv 0 := fin.elim0
-
-  instance nil_unique : unique (bv 0) :=
-  fin.tuple0_unique _
 
   def cons (b : bool) (v : bv n) : bv (n + 1) := fin.cons b v
   def snoc (v : bv n) (b : bool) : bv (n + 1) := fin.snoc v b

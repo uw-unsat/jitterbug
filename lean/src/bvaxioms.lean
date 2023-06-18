@@ -51,7 +51,7 @@ begin
   have hk : 2^n > 0 := pow2_pos _; generalize_hyp : 2^n = k at hk ⊢,
   calc (↑x₁ * k + ↑x₀) * (↑y₁ * k + ↑y₀) / k % k
       = (↑x₀ * ↑y₀ + (↑x₀ * ↑y₁ + ↑x₁ * ↑y₀ + ↑x₁ * ↑y₁ * k) * k) / k % k : by congr; ring
-  ... = (↑x₀ * ↑y₀ / k + ↑x₀ * ↑y₁ + ↑x₁ * ↑y₀ + ↑x₁ * ↑y₁ * k) % k : by rw add_mul_div_right _ _ hk; ring
+  ... = (↑x₀ * ↑y₀ / k + ↑x₀ * ↑y₁ + ↑x₁ * ↑y₀ + ↑x₁ * ↑y₁ * k) % k : by rw add_mul_div_right _ _ hk; ring_nf
   ... = (↑x₀ * ↑y₀ / k + ↑x₀ * ↑y₁ + ↑x₁ * ↑y₀) % k : by rw add_mul_mod_self_right
 end
 
